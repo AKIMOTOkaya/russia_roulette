@@ -4,7 +4,26 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+
+# Rust
+/target/
+**/*.rs.bk
+
+# JavaScript / TypeScript
+**/node_modules/
+**/.pnpm-store/
+**/.vite/
+coverage/
+
+# Local configuration and tooling
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+
+# Generic build output
 dist/
 build/
 *.egg-info/
-

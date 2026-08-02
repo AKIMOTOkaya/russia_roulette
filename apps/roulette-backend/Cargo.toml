@@ -1,0 +1,11 @@
+[package]
+name = "roulette-backend"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+roulette-host.workspace = true
+
+[lints]
+workspace = true
