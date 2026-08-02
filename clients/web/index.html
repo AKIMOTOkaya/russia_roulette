@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12100f" />
+    <title>俄罗斯轮盘 · 本地试作</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">LOCAL TABLE · EARLY MVP</p>
+          <h1>俄罗斯轮盘</h1>
+        </div>
+        <div class="status-pill" id="connection-status">等待开局</div>
+      </header>
+
+      <section class="setup panel" id="setup-panel">
+        <div class="setup-copy">
+          <p class="section-number">00 / 开桌</p>
+          <h2>你和随机机器人，只有一个人能离桌。</h2>
+          <p>每个动作都会推进回合。移动寻找角度，射击可能空膛；第三次连续射击一定空膛。</p>
+        </div>
+        <form id="setup-form">
+          <label>
+            你的名字
+            <input id="player-name" name="player_name" maxlength="24" value="玩家" required />
+          </label>
+          <label>
+            机器人数
+            <select id="bot-count" name="bot_count">
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+          </label>
+          <label>
+            随机种子 <span>可留空</span>
+            <input id="seed" name="seed" type="number" min="0" placeholder="用于复现同一局" />
+          </label>
+          <button class="primary" type="submit">开始新对局</button>
+        </form>
+      </section>
+
+      <section class="game-layout hidden" id="game-panel">
+        <aside class="roster panel">
+          <p class="section-number">01 / 玩家</p>
+          <div id="players"></div>
+          <button class="quiet" id="new-game-button" type="button">重开一桌</button>
+        </aside>
+
+        <section class="board-wrap panel">
+          <div class="board-heading">
+            <div>
+              <p class="section-number">02 / 桌面</p>
+              <h2 id="turn-title">等待开局</h2>
+            </div>
+            <div class="revision" id="revision">REV 0</div>
+          </div>
+          <div class="board" id="board" aria-label="游戏地图"></div>
+          <div class="legend">
+            <span>▦ 木箱</span><span>≈ 水域</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span>
+          </div>
+        </section>
+
+        <aside class="controls panel">
+          <p class="section-number">03 / 行动</p>
+          <div class="mode-switch" role="group" aria-label="行动模式">
+            <button class="mode active" data-mode="move" type="button">移动</button>
+            <button class="mode" data-mode="shoot" type="button">射击</button>
+          </div>
+          <div class="direction-pad">
+            <button data-direction="up" type="button" aria-label="向上">↑</button>
+            <button data-direction="left" type="button" aria-label="向左">←</button>
+            <button data-direction="down" type="button" aria-label="向下">↓</button>
+            <button data-direction="right" type="button" aria-label="向右">→</button>
+          </div>
+          <button class="secondary action" data-command="wait" type="button">等待一回合</button>
+          <button class="danger action" data-command="suicide" type="button">结束自己</button>
+          <p class="shortcut">方向键移动 · Shift + 方向键射击 · 空格等待</p>
+        </aside>
+
+        <section class="events panel">
+          <p class="section-number">04 / 记录</p>
+          <ol id="events"></ol>
+        </section>
+      </section>
+    </main>
+    <div class="toast hidden" id="toast" role="alert"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

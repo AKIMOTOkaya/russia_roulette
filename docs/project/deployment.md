@@ -54,4 +54,4 @@ apps/<app>/
 |------------------|----------|----------|--------------|----------|
 | `roulette-backend` | `gcr.io/distroless/cc-debian12:nonroot` | `/app/runtime/roulette-backend` | `8080` | `srv_edge` |
 
-当前只是运行骨架：在 Rust 后端实现并产出 Linux 可执行文件之前，容器不会启动成功。
+当前源码已能作为本地 Web MVP 运行，但服务器模板仍只是部署骨架：尚未产出 Linux 可执行文件，也未配置 Caddy 路由。将本地单局暴露到公网还缺少身份、访问隔离和安全评审，因此不能把当前二进制直接视为公网多人服务。

@@ -12,9 +12,9 @@ RussianRoulette/
 │   ├── roulette-core/
 │   └── roulette-host/
 ├── apps/
-│   └── roulette-backend/
+│   └── roulette-backend/       # localhost HTTP 服务与组合入口
 ├── clients/
-│   └── web/
+│   └── web/                    # 本地 MVP 的 HTML、CSS、JavaScript
 ├── protocol/
 ├── docs/
 │   ├── rules/
@@ -50,3 +50,4 @@ RussianRoulette/
 - 根目录只保留全仓库入口、统一配置和少量治理文件。
 - `AGENTS.md` 记录对后续开发会话生效的仓库级维护与交付规则。
 - `deploy/srv/` 保存可提交的服务器目录模板；本机 `/Users/akimotokaya/Documents/srv` 是服务器 `~/srv` 的影子目录，不从该目录反向复制其他应用或秘密配置。
+- `clients/web` 当前不含单独构建产物，源码由 `roulette-backend` 编译时嵌入；引入前端工具链时应先记录新的生成边界。

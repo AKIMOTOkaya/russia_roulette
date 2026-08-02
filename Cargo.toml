@@ -22,3 +22,6 @@ pedantic = "warn"
 roulette-domain = { path = "crates/roulette-domain" }
 roulette-core = { path = "crates/roulette-core" }
 roulette-host = { path = "crates/roulette-host" }
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }

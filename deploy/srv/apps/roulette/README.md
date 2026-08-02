@@ -10,7 +10,7 @@
 services/roulette-backend/runtime/roulette-backend
 ```
 
-并保证文件具有执行权限。当前 Rust 应用仍是骨架，尚未生成可运行的服务端文件。
+并保证文件具有执行权限。Rust 应用源码已可运行本地 Web MVP，但本模板尚未生成 Linux 服务端文件；当前实现也只有进程内单局，不是完成的公网多人服务。
 
 ## 网络
 
@@ -29,4 +29,4 @@ docker compose up -d
 docker compose ps
 ```
 
-在可执行文件和 Caddy 路由准备好之前，只执行 `docker compose config`，不要启动服务。
+在 Linux 可执行文件、Caddy 路由和公网访问安全边界准备好之前，只执行 `docker compose config`，不要启动服务。
