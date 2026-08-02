@@ -23,6 +23,7 @@
 | 模块职责或依赖 | `modules.md`、总体架构、会话日志。 |
 | 命名规则 | `naming-conventions.md`、受影响代码、会话日志。 |
 | 开发或提交规则 | `development-workflow.md`、日志模板。 |
+| 部署目录、容器或网络 | `deployment.md`、模块说明、会话日志。 |
 | 权威玩法 | `docs/rules/`、相关 Core 测试、会话日志。 |
 
 ## Git 提交

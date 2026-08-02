@@ -1,0 +1,19 @@
+services:
+  roulette-backend:
+    image: gcr.io/distroless/cc-debian12:nonroot
+    restart: unless-stopped
+    working_dir: /app
+    entrypoint: ["${ROULETTE_RUNTIME_DIR:-/app/runtime}/roulette-backend"]
+    env_file:
+      - ./services/roulette-backend/.env
+    expose:
+      - "${ROULETTE_HTTP_PORT:-8080}"
+    volumes:
+      - ./services/roulette-backend/runtime:${ROULETTE_RUNTIME_DIR:-/app/runtime}:ro
+    networks:
+      - edge
+
+networks:
+  edge:
+    external: true
+    name: srv_edge

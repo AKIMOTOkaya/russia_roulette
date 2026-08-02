@@ -25,6 +25,7 @@ RussianRoulette/
 ├── scripts/
 ├── tests/
 └── deploy/
+    └── srv/apps/roulette/  # 服务器影子目录中的应用模板
 ```
 
 ## 顶级目录职责
@@ -48,3 +49,4 @@ RussianRoulette/
 - 生成代码必须有稳定来源和生成命令，原则上不手工修改。
 - 根目录只保留全仓库入口、统一配置和少量治理文件。
 - `AGENTS.md` 记录对后续开发会话生效的仓库级维护与交付规则。
+- `deploy/srv/` 保存可提交的服务器目录模板；本机 `/Users/akimotokaya/Documents/srv` 是服务器 `~/srv` 的影子目录，不从该目录反向复制其他应用或秘密配置。

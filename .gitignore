@@ -19,6 +19,8 @@ coverage/
 .env
 .env.*
 !.env.example
+!deploy/srv/apps/*/.env
+!deploy/srv/apps/*/services/*/.env
 .DS_Store
 .idea/
 .vscode/

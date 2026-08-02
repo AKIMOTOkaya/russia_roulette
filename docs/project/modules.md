@@ -7,7 +7,7 @@
 | `roulette-domain` | `roulette_domain` | 骨架 | 稳定 ID、命令、事件、状态、视图、错误与版本数据。 | 标准库及少量纯数据依赖。 |
 | `roulette-core` | `roulette_core` | 骨架 | 命令校验、状态转移、显式 RNG、事件生成和视图投影。 | `roulette-domain`。 |
 | `roulette-host` | `roulette_host` | 骨架 | 房间生命周期、玩家槽位、单局队列、重连、超时、Bot 调度和持久化端口。 | `roulette-core`、`roulette-domain`。 |
-| `roulette-backend` | 不作为库导出 | 骨架 | 公网服务组合入口，后续接入 HTTP/WSS、Host、存储和进程生命周期。 | 首先依赖 `roulette-host`；适配器按需增加。 |
+| `roulette-backend` | 不作为库导出 | 骨架 | 公网服务组合入口，后续接入 HTTP/WSS、Host、存储和进程生命周期；服务器容器以同名服务运行。 | 首先依赖 `roulette-host`；适配器按需增加。 |
 
 ## 依赖方向
 
@@ -44,3 +44,11 @@ flowchart LR
 - `clients/web`：当前优先客户端，计划使用 TypeScript；具体框架未定。
 - `protocol`：作为 Rust、TypeScript、Python 等语言共享契约的来源。
 - `scripts`：允许使用适合任务的 Shell、Python、JavaScript 或 Rust，但必须记录运行环境和输入输出。
+
+## 部署映射
+
+- 源码应用：`apps/roulette-backend`。
+- 仓库内服务器模板：`deploy/srv/apps/roulette`。
+- 本机服务器影子：`/Users/akimotokaya/Documents/srv/apps/roulette`。
+- 服务器实际路径：`~/srv/apps/roulette`。
+- Compose 服务名：`roulette-backend`；共享 `srv_edge` 网络中的反向代理上游为 `roulette-backend:8080`。

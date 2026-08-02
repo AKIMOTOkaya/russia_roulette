@@ -22,6 +22,7 @@ RussianRoulette/
 ├── scripts/               # 开发、生成、检查和运维辅助脚本
 ├── tests/                 # 跨模块集成、协议兼容和端到端测试
 └── deploy/                # 容器、反向代理和环境部署配置
+    └── srv/apps/roulette/ # 服务器 ~/srv/apps/roulette 的可追踪模板
 ```
 
 根目录不放普通业务源码。Rust 库放入 `crates/`，Rust 可执行程序放入 `apps/`，其他语言按产品形态放入 `clients/`、未来的 `sdk/` 或相应独立目录。
@@ -30,6 +31,7 @@ RussianRoulette/
 
 - 已建立 Cargo 工作区，以及 `roulette-domain`、`roulette-core`、`roulette-host` 与 `roulette-backend` 骨架。
 - 已整理正式规则、总体架构与 Web 公网版开发路径。
+- 已建立 `roulette-backend` 服务器容器骨架，当前只加入 Caddy 使用的 `srv_edge` 网络。
 - 尚未选择 Web 框架、数据库访问库和服务器框架。
 - 当前环境未安装 Rust 工具链，因此本次只完成工作区结构检查，尚未运行 `cargo check`。
 
