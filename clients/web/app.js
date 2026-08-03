@@ -27,13 +27,14 @@ const identityReady = new Promise((resolve) => {
 });
 
 const elements = Object.fromEntries([
-  "lobby-panel", "room-panel", "connection-dot", "connection-status", "tab-identity",
+  "landing-panel", "lobby-panel", "room-panel", "brand-home", "browse-lobby", "back-to-landing",
+  "connection-dot", "connection-status", "tab-identity", "settings-tab-identity", "landing-room-count",
   "room-count", "create-room-form", "join-room-form", "create-password-enabled",
   "create-password-field", "room-list", "empty-lobby", "refresh-lobby", "founder-auth-form",
   "founder-badge", "lan-toggle", "lan-description", "room-code", "room-title", "room-phase",
   "room-password", "leave-room", "member-count", "members", "add-bot", "start-room",
   "dissolve-room", "room-hint", "waiting-room", "game-workspace", "room-seed", "board",
-  "records", "turn-title", "revision", "toast",
+  "records", "turn-title", "revision", "solo-form", "toast",
 ].map((id) => [id.replaceAll("-", "_"), document.getElementById(id)]));
 
 const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", high_ground: "△", mine: "◆", medkit: "✚" };
@@ -43,6 +44,21 @@ let mode = "move";
 let operationBusy = false;
 let pollBusy = false;
 let toastTimer = null;
+let surface = "landing";
+
+document.querySelectorAll("[data-open-dialog]").forEach((button) => {
+  button.addEventListener("click", () => openDialog(button.dataset.openDialog));
+});
+document.querySelectorAll("[data-close-dialog]").forEach((button) => {
+  button.addEventListener("click", () => button.closest("dialog").close());
+});
+document.querySelectorAll("dialog").forEach((dialog) => {
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+});
+
+elements.brand_home.addEventListener("click", showLanding);
+elements.back_to_landing.addEventListener("click", showLanding);
+elements.browse_lobby.addEventListener("click", showLobby);
 
 elements.create_password_enabled.addEventListener("change", () => {
   const enabled = elements.create_password_enabled.checked;
@@ -61,6 +77,26 @@ elements.create_room_form.addEventListener("submit", async (event) => {
     password: elements.create_password_enabled.checked ? value("create-room-password") : null,
   });
   if (created) enterRoom(created);
+});
+
+elements.solo_form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const playerName = value("solo-player-name");
+  const botCount = Number(value("solo-bot-count"));
+  const seedText = value("solo-seed");
+  rememberPlayerName(playerName);
+  const created = await mutate("/api/rooms", {
+    tab_id: tabId,
+    room_name: "单人模拟",
+    player_name: playerName,
+    password: null,
+  });
+  if (!created) return;
+  enterRoom(created);
+  for (let index = 0; index < botCount; index += 1) {
+    if (!await roomMutation("bots/add", { tab_id: tabId })) return;
+  }
+  await roomMutation("start", { tab_id: tabId, seed: seedText ? Number(seedText) : null });
 });
 
 elements.join_room_form.addEventListener("submit", async (event) => {
@@ -170,10 +206,13 @@ function renderLobby(lobby) {
   roomId = null;
   sessionStorage.removeItem("roulette_room_id");
   elements.room_panel.classList.add("hidden");
-  elements.lobby_panel.classList.remove("hidden");
-  elements.room_count.textContent = String(lobby.rooms.length).padStart(2, "0");
+  const count = String(lobby.rooms.length).padStart(2, "0");
+  elements.room_count.textContent = count;
+  elements.landing_room_count.textContent = count;
   elements.room_list.replaceChildren(...lobby.rooms.map(roomCard));
   elements.empty_lobby.classList.toggle("hidden", lobby.rooms.length > 0);
+  elements.landing_panel.classList.toggle("hidden", surface !== "landing");
+  elements.lobby_panel.classList.toggle("hidden", surface !== "lobby");
 }
 
 function roomCard(summary) {
@@ -189,7 +228,7 @@ function roomCard(summary) {
     <div class="room-card-meta"><span>真人 ${summary.human_count}</span><span>BOT ${summary.bot_count}</span></div>`;
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = summary.is_member ? "返回房间" : summary.phase === "waiting" ? "填写房间号" : "对局进行中";
+  button.textContent = summary.is_member ? "返回房间" : summary.phase === "waiting" ? "加入房间" : "对局进行中";
   button.disabled = summary.phase !== "waiting" && !summary.is_member;
   button.addEventListener("click", async () => {
     if (summary.is_member) {
@@ -197,8 +236,7 @@ function roomCard(summary) {
       if (current) enterRoom(current);
     } else {
       document.getElementById("join-room-code").value = summary.id;
-      document.getElementById("join-room-password").focus();
-      elements.join_room_form.scrollIntoView({ behavior: "smooth", block: "center" });
+      openDialog("join-dialog");
     }
   });
   card.append(button);
@@ -206,9 +244,11 @@ function roomCard(summary) {
 }
 
 function enterRoom(nextRoom) {
+  closeDialogs();
   room = nextRoom;
   roomId = nextRoom.id;
   sessionStorage.setItem("roulette_room_id", roomId);
+  elements.landing_panel.classList.add("hidden");
   elements.lobby_panel.classList.add("hidden");
   elements.room_panel.classList.remove("hidden");
   renderRoom();
@@ -471,18 +511,53 @@ async function heartbeat() {
 }
 
 function returnToLobby(lobby) {
+  surface = "lobby";
   renderLobby(lobby);
   loadServerSettings();
 }
 
+function showLanding() {
+  if (roomId) {
+    showToast("请先离开当前房间");
+    return;
+  }
+  surface = "landing";
+  elements.room_panel.classList.add("hidden");
+  elements.lobby_panel.classList.add("hidden");
+  elements.landing_panel.classList.remove("hidden");
+}
+
+function showLobby() {
+  if (roomId) return;
+  surface = "lobby";
+  elements.room_panel.classList.add("hidden");
+  elements.landing_panel.classList.add("hidden");
+  elements.lobby_panel.classList.remove("hidden");
+  loadLobby();
+}
+
+function openDialog(id) {
+  const dialog = document.getElementById(id);
+  if (!dialog || dialog.open) return;
+  closeDialogs();
+  dialog.showModal();
+  if (id === "settings-dialog") loadServerSettings();
+}
+
+function closeDialogs() {
+  document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+}
+
 function restorePlayerNames() {
   const name = sessionStorage.getItem("roulette_player_name") || "玩家";
+  document.getElementById("solo-player-name").value = name;
   document.getElementById("create-player-name").value = name;
   document.getElementById("join-player-name").value = name;
 }
 
 function rememberPlayerName(name) {
   sessionStorage.setItem("roulette_player_name", name);
+  document.getElementById("solo-player-name").value = name;
   document.getElementById("create-player-name").value = name;
   document.getElementById("join-player-name").value = name;
 }
@@ -510,6 +585,7 @@ function terrainName(terrain) { return ({ empty: "空地", wall: "墙", crate: "
 async function startClient() {
   await identityReady;
   elements.tab_identity.textContent = `TAB · ${tabId.slice(0, 4).toUpperCase()}`;
+  elements.settings_tab_identity.textContent = `TAB · ${tabId.slice(0, 4).toUpperCase()}`;
   restorePlayerNames();
   await loadInitialState();
   setInterval(poll, 2000);

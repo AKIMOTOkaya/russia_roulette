@@ -10,10 +10,10 @@
   <body>
     <main class="shell">
       <header class="masthead">
-        <a class="brand" href="/" aria-label="返回大厅">
+        <button class="brand" id="brand-home" type="button" aria-label="返回封面">
           <span class="brand-mark">RR</span>
           <span><strong>俄罗斯轮盘</strong><small>LOCAL PLAYTEST</small></span>
-        </a>
+        </button>
         <div class="session-state">
           <span class="status-dot" id="connection-dot"></span>
           <span id="connection-status">正在连接</span>
@@ -21,67 +21,61 @@
         </div>
       </header>
 
-      <section id="lobby-panel">
-        <div class="lobby-hero">
+      <section class="landing" id="landing-panel">
+        <div class="landing-copy">
+          <div class="landing-title">
+            <p class="eyebrow">LOCAL TABLE / EARLY ACCESS</p>
+            <h1>俄罗斯<br />轮盘</h1>
+            <p>本地多人回合制轻游戏</p>
+          </div>
+          <nav class="landing-menu" aria-label="主菜单">
+            <button class="menu-item primary-menu" id="browse-lobby" type="button">
+              <span><small>01</small>浏览房间大厅</span><strong id="landing-room-count">00</strong>
+            </button>
+            <button class="menu-item" data-open-dialog="solo-dialog" type="button"><span><small>02</small>单人模拟</span><b>快速开始</b></button>
+            <button class="menu-item" data-open-dialog="create-dialog" type="button"><span><small>03</small>创建房间</span><b>新牌桌</b></button>
+            <button class="menu-item" data-open-dialog="join-dialog" type="button"><span><small>04</small>加入房间</span><b>五位房间号</b></button>
+            <button class="menu-item subdued" data-open-dialog="settings-dialog" type="button"><span><small>05</small>游戏设置</span><b>本机服务</b></button>
+          </nav>
+        </div>
+        <div class="landing-art" aria-hidden="true">
+          <div class="roulette-emblem">
+            <span class="emblem-letter">R</span>
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <p>FIVE CHAMBERS<br />ONE TABLE</p>
+        </div>
+      </section>
+
+      <section class="hidden" id="lobby-panel">
+        <div class="lobby-header">
           <div>
-            <p class="eyebrow">LOCAL ROOM LOBBY / 本地房间大厅</p>
-            <h1>找一张桌，<br />把命运交给轮盘。</h1>
-            <p class="hero-copy">每个浏览器标签页都是一名独立玩家。创建房间、邀请同伴，人数不够时再让随机机器人补位。</p>
+            <button class="text-button" id="back-to-landing" type="button">← 返回封面</button>
+            <p class="section-number">LOCAL / ROOMS</p>
+            <h1>房间大厅</h1>
           </div>
-          <div class="hero-stat">
-            <strong id="room-count">00</strong>
-            <span>ACTIVE ROOMS<br />当前房间</span>
+          <div class="lobby-tools">
+            <button data-open-dialog="create-dialog" type="button">＋ 创建房间</button>
+            <button data-open-dialog="join-dialog" type="button">加入房间</button>
+            <button class="icon-button" data-open-dialog="settings-dialog" type="button">设置</button>
           </div>
         </div>
 
-        <div class="lobby-grid">
-          <section class="panel lobby-actions">
-            <div class="panel-heading">
-              <div><p class="section-number">01 / 进入牌桌</p><h2>创建或加入</h2></div>
+        <section class="room-directory">
+          <div class="directory-heading">
+            <div>
+              <h2>可用牌桌</h2>
+              <p>等待中的房间可直接加入；每个标签页视为一名玩家。</p>
             </div>
-            <div class="action-forms">
-              <form id="create-room-form" class="stack-form">
-                <h3>创建房间</h3>
-                <label>你的名字<input id="create-player-name" maxlength="24" value="玩家" required /></label>
-                <label>房间名称<input id="room-name" maxlength="32" value="临时牌桌" required /></label>
-                <label class="check-line"><input id="create-password-enabled" type="checkbox" /><span>使用房间密码</span></label>
-                <label id="create-password-field" class="hidden">房间密码<input id="create-room-password" maxlength="32" autocomplete="off" /></label>
-                <button class="primary" type="submit">创建房间</button>
-              </form>
-              <form id="join-room-form" class="stack-form divided">
-                <h3>加入房间</h3>
-                <label>你的名字<input id="join-player-name" maxlength="24" value="玩家" required /></label>
-                <label>五位房间号<input id="join-room-code" class="room-code-input" maxlength="5" autocomplete="off" placeholder="A7K2M" required /></label>
-                <label>房间密码 <span>没有则留空</span><input id="join-room-password" maxlength="32" autocomplete="off" /></label>
-                <button class="secondary" type="submit">加入房间</button>
-              </form>
-            </div>
-          </section>
-
-          <section class="panel founder-panel">
-            <div class="panel-heading">
-              <div><p class="section-number">02 / 服务设置</p><h2>本机创始人</h2></div>
-              <span class="mini-badge" id="founder-badge">未认证</span>
-            </div>
-            <p>启动服务时会生成或注入一个临时密码。验证后，可决定是否允许局域网设备访问本大厅。</p>
-            <form id="founder-auth-form" class="inline-form">
-              <input id="founder-password" type="password" autocomplete="current-password" placeholder="输入临时密码" required />
-              <button type="submit">验证</button>
-            </form>
-            <div class="server-setting">
-              <div><strong>暴露到局域网</strong><small id="lan-description">当前仅本机可访问</small></div>
-              <label class="switch"><input id="lan-toggle" type="checkbox" disabled /><span></span></label>
-            </div>
-          </section>
-        </div>
-
-        <section class="panel room-directory">
-          <div class="panel-heading">
-            <div><p class="section-number">03 / 房间目录</p><h2>正在等待的牌桌</h2></div>
-            <button class="icon-button" id="refresh-lobby" type="button" aria-label="刷新房间">↻</button>
+            <div class="directory-stat"><strong id="room-count">00</strong><span>ROOMS</span><button class="icon-button" id="refresh-lobby" type="button" aria-label="刷新房间">↻</button></div>
           </div>
           <div class="room-list" id="room-list"></div>
-          <div class="empty-state hidden" id="empty-lobby"><strong>还没有房间</strong><span>创建第一张牌桌，它会立即出现在这里。</span></div>
+          <div class="empty-state hidden" id="empty-lobby">
+            <span class="empty-wheel">○</span>
+            <strong>大厅里还没有牌桌</strong>
+            <span>创建一间房，或先从单人模拟熟悉玩法。</span>
+            <div><button class="primary" data-open-dialog="create-dialog" type="button">创建房间</button><button data-open-dialog="solo-dialog" type="button">单人模拟</button></div>
+          </div>
         </section>
       </section>
 
@@ -163,6 +157,55 @@
         </div>
       </section>
     </main>
+
+    <dialog class="modal" id="solo-dialog">
+      <div class="modal-heading"><div><p class="section-number">QUICK PLAY</p><h2>单人模拟</h2></div><button class="modal-close" data-close-dialog type="button" aria-label="关闭">×</button></div>
+      <p class="modal-copy">创建一张只有你和随机机器人的临时牌桌，并立即开始对局。</p>
+      <form id="solo-form" class="stack-form">
+        <label>你的名字<input id="solo-player-name" maxlength="24" value="玩家" required /></label>
+        <label>机器人数<select id="solo-bot-count"><option value="2">2 个</option><option value="3" selected>3 个</option><option value="4">4 个</option><option value="5">5 个</option></select></label>
+        <label>随机种子 <span>可留空</span><input id="solo-seed" type="number" min="0" placeholder="自动生成" /></label>
+        <button class="primary" type="submit">开始模拟</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="create-dialog">
+      <div class="modal-heading"><div><p class="section-number">NEW ROOM</p><h2>创建房间</h2></div><button class="modal-close" data-close-dialog type="button" aria-label="关闭">×</button></div>
+      <form id="create-room-form" class="stack-form">
+        <label>你的名字<input id="create-player-name" maxlength="24" value="玩家" required /></label>
+        <label>房间名称<input id="room-name" maxlength="32" value="临时牌桌" required /></label>
+        <label class="check-line"><input id="create-password-enabled" type="checkbox" /><span>使用房间密码</span></label>
+        <label id="create-password-field" class="hidden">房间密码<input id="create-room-password" maxlength="32" autocomplete="off" /></label>
+        <button class="primary" type="submit">创建并进入</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="join-dialog">
+      <div class="modal-heading"><div><p class="section-number">JOIN ROOM</p><h2>加入房间</h2></div><button class="modal-close" data-close-dialog type="button" aria-label="关闭">×</button></div>
+      <form id="join-room-form" class="stack-form">
+        <label>你的名字<input id="join-player-name" maxlength="24" value="玩家" required /></label>
+        <label>五位房间号<input id="join-room-code" class="room-code-input" maxlength="5" autocomplete="off" placeholder="A7K2M" required /></label>
+        <label>房间密码 <span>没有则留空</span><input id="join-room-password" maxlength="32" autocomplete="off" /></label>
+        <button class="primary" type="submit">加入房间</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal settings-modal" id="settings-dialog">
+      <div class="modal-heading"><div><p class="section-number">LOCAL SETTINGS</p><h2>游戏与服务设置</h2></div><button class="modal-close" data-close-dialog type="button" aria-label="关闭">×</button></div>
+      <div class="settings-row identity-row"><div><strong>当前标签页</strong><small>每个标签页对应一名本地玩家</small></div><code id="settings-tab-identity">TAB · ----</code></div>
+      <div class="settings-section">
+        <div class="settings-title"><div><strong>本机创始人</strong><small>验证启动时显示的临时密码</small></div><span class="mini-badge" id="founder-badge">未认证</span></div>
+        <form id="founder-auth-form" class="inline-form">
+          <input id="founder-password" type="password" autocomplete="current-password" placeholder="输入临时密码" required />
+          <button type="submit">验证</button>
+        </form>
+      </div>
+      <div class="server-setting">
+        <div><strong>允许局域网访问</strong><small id="lan-description">当前仅本机可访问</small></div>
+        <label class="switch"><input id="lan-toggle" type="checkbox" disabled /><span></span></label>
+      </div>
+    </dialog>
+
     <div class="toast hidden" id="toast" role="alert"></div>
     <script src="/app.js" defer></script>
   </body>
