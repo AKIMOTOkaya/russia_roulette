@@ -167,11 +167,6 @@ pub enum EliminationCause {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GameEvent {
-    /// Initial state was created.
-    MatchStarted {
-        /// Seed used for this match.
-        seed: u64,
-    },
     /// A player entered another tile.
     Moved {
         /// Acting player.
@@ -248,23 +243,77 @@ pub enum GameEvent {
         /// Item tile consumed by the pickup.
         item: Terrain,
     },
-    /// A player intentionally waited.
-    Waited {
+}
+
+/// Machine-readable system notifications shown in the comprehensive log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum GameNotification {
+    /// A new authoritative match was created.
+    MatchStarted {
+        /// Seed used for this match.
+        seed: u64,
+    },
+    /// The match reached a terminal state.
+    MatchFinished {
+        /// Last surviving player, or none for a draw.
+        winner_id: Option<PlayerId>,
+    },
+}
+
+/// Severity used to render and route system notifications.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationLevel {
+    /// Ordinary informational notification.
+    Info,
+    /// Positive terminal or milestone notification.
+    Success,
+    /// Warning that deserves attention but does not reject a command.
+    Warning,
+}
+
+/// One category of entry in the comprehensive chronological game log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "category", rename_all = "snake_case")]
+pub enum GameRecordContent {
+    /// A player submitted an accepted command.
+    Action {
         /// Acting player.
         actor_id: PlayerId,
+        /// Accepted semantic command.
+        command: PlayerCommand,
     },
-    /// A new player turn began.
-    TurnStarted {
-        /// Current player.
+    /// A fact occurred in the game world.
+    Event {
+        /// Structured event fact independent of any display text.
+        event: GameEvent,
+    },
+    /// The turn cursor advanced.
+    Turn {
+        /// Player now expected to act.
         player_id: PlayerId,
         /// One-based round number.
         round: u32,
     },
-    /// The match reached a terminal state.
-    GameFinished {
-        /// Last surviving player, or none for a draw.
-        winner_id: Option<PlayerId>,
+    /// The host or rules system emitted a user-facing notification.
+    Notification {
+        /// Display and routing severity.
+        level: NotificationLevel,
+        /// Machine-readable notification payload.
+        notification: GameNotification,
     },
+}
+
+/// Ordered entry in the comprehensive game log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameRecord {
+    /// Match-local monotonic sequence number, starting at one.
+    pub sequence: u64,
+    /// Typed record content. Categories are intentionally not parent/child
+    /// links, so future ambient events and notifications can stand alone.
+    #[serde(flatten)]
+    pub content: GameRecordContent,
 }
 
 /// Terminal or running status of a game.
@@ -316,8 +365,10 @@ pub struct GameState {
     pub status: GameStatus,
     /// Explicit random streams required for replay.
     pub rng: RngStreams,
-    /// Chronological structured event log.
-    pub events: Vec<GameEvent>,
+    /// Sequence number assigned to the next comprehensive log entry.
+    pub next_record_sequence: u64,
+    /// Complete chronological record of actions, events, turns and notices.
+    pub records: Vec<GameRecord>,
 }
 
 /// Public map cell used by the Web client.
@@ -352,6 +403,6 @@ pub struct GameView {
     pub round: u32,
     /// Running or finished state.
     pub status: GameStatus,
-    /// Recent chronological structured events.
-    pub events: Vec<GameEvent>,
+    /// Recent chronological actions, events, turns and notifications.
+    pub records: Vec<GameRecord>,
 }

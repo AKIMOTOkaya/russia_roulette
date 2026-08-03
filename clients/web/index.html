@@ -60,32 +60,42 @@
             </div>
             <div class="revision" id="revision">REV 0</div>
           </div>
-          <div class="board" id="board" aria-label="游戏地图"></div>
-          <div class="legend">
-            <span>▦ 木箱</span><span>≈ 水域</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span>
+          <div class="board-stage">
+            <div class="playfield">
+              <div class="board" id="board" aria-label="游戏地图"></div>
+              <div class="legend">
+                <span>▦ 木箱</span><span>≈ 水域</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span>
+              </div>
+            </div>
+
+            <aside class="controls">
+              <p class="section-number">03 / 行动</p>
+              <div class="mode-switch" role="group" aria-label="行动模式">
+                <button class="mode active" data-mode="move" type="button">移动</button>
+                <button class="mode" data-mode="shoot" type="button">射击</button>
+              </div>
+              <div class="direction-pad">
+                <button data-direction="up" type="button" aria-label="向上">↑</button>
+                <button data-direction="left" type="button" aria-label="向左">←</button>
+                <button data-direction="down" type="button" aria-label="向下">↓</button>
+                <button data-direction="right" type="button" aria-label="向右">→</button>
+              </div>
+              <button class="secondary action" data-command="wait" type="button">等待</button>
+              <button class="danger action" data-command="suicide" type="button">结束自己</button>
+              <p class="shortcut">方向键移动<br />Shift + 方向键射击<br />空格等待</p>
+            </aside>
           </div>
         </section>
 
-        <aside class="controls panel">
-          <p class="section-number">03 / 行动</p>
-          <div class="mode-switch" role="group" aria-label="行动模式">
-            <button class="mode active" data-mode="move" type="button">移动</button>
-            <button class="mode" data-mode="shoot" type="button">射击</button>
+        <section class="records panel">
+          <div class="records-heading">
+            <div>
+              <p class="section-number">04 / 全局记录</p>
+              <h2>对局时间线</h2>
+            </div>
+            <p>行动 · 事件 · 回合 · 通知</p>
           </div>
-          <div class="direction-pad">
-            <button data-direction="up" type="button" aria-label="向上">↑</button>
-            <button data-direction="left" type="button" aria-label="向左">←</button>
-            <button data-direction="down" type="button" aria-label="向下">↓</button>
-            <button data-direction="right" type="button" aria-label="向右">→</button>
-          </div>
-          <button class="secondary action" data-command="wait" type="button">等待一回合</button>
-          <button class="danger action" data-command="suicide" type="button">结束自己</button>
-          <p class="shortcut">方向键移动 · Shift + 方向键射击 · 空格等待</p>
-        </aside>
-
-        <section class="events panel">
-          <p class="section-number">04 / 记录</p>
-          <ol id="events"></ol>
+          <ol id="records"></ol>
         </section>
       </section>
     </main>

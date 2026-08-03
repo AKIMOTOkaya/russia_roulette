@@ -289,7 +289,6 @@ dependencies = [
  "roulette-domain",
  "roulette-host",
  "serde",
- "serde_json",
  "tokio",
 ]
 

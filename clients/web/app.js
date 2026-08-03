@@ -5,7 +5,7 @@ const elements = {
   connection: document.querySelector("#connection-status"),
   board: document.querySelector("#board"),
   players: document.querySelector("#players"),
-  events: document.querySelector("#events"),
+  records: document.querySelector("#records"),
   turnTitle: document.querySelector("#turn-title"),
   revision: document.querySelector("#revision"),
   toast: document.querySelector("#toast"),
@@ -110,7 +110,7 @@ function render() {
   elements.revision.textContent = `REV ${view.revision}`;
   renderBoard();
   renderPlayers();
-  renderEvents();
+  renderRecords();
 
   if (view.status.state === "finished") {
     const winner = view.players.find((player) => player.id === view.status.winner_id);
@@ -156,18 +156,42 @@ function renderPlayers() {
   }));
 }
 
-function renderEvents() {
-  elements.events.replaceChildren(...[...view.events].reverse().map((event) => {
+function renderRecords() {
+  elements.records.replaceChildren(...[...view.records].reverse().map((record) => {
     const item = document.createElement("li");
-    item.textContent = eventText(event);
+    item.className = `record ${record.category}`;
+
+    const badge = document.createElement("span");
+    badge.className = "record-badge";
+    badge.textContent = ({ action: "行动", event: "事件", turn: "回合", notification: "通知" })[record.category];
+
+    const content = document.createElement("span");
+    content.className = "record-content";
+    content.textContent = recordText(record);
+
+    const sequence = document.createElement("span");
+    sequence.className = "record-sequence";
+    sequence.textContent = `#${record.sequence}`;
+
+    item.append(badge, content, sequence);
     return item;
   }));
 }
 
+function recordText(record) {
+  const name = playerName;
+  switch (record.category) {
+    case "action": return `${name(record.actor_id)} · ${commandText(record.command)}`;
+    case "event": return eventText(record.event);
+    case "turn": return `第 ${record.round} 回合 · 轮到 ${name(record.player_id)}`;
+    case "notification": return notificationText(record.notification);
+    default: return record.category;
+  }
+}
+
 function eventText(event) {
-  const name = (id) => view.players.find((player) => player.id === id)?.name || `玩家 ${id}`;
+  const name = playerName;
   switch (event.type) {
-    case "match_started": return `对局开始，随机种子 ${event.seed}`;
     case "moved": return `${name(event.actor_id)} 移动到 (${event.to.x}, ${event.to.y})`;
     case "move_blocked": return `${name(event.actor_id)} 的移动被阻挡`;
     case "elbow_duel": return `${name(event.attacker_id)} 与 ${name(event.defender_id)} 发生肘击，${name(event.winner_id)} 胜出`;
@@ -178,11 +202,30 @@ function eventText(event) {
     case "player_eliminated": return `${name(event.player_id)} 出局（${causeName(event.cause)}）`;
     case "terrain_changed": return `(${event.position.x}, ${event.position.y}) 的地形发生变化`;
     case "item_collected": return `${name(event.player_id)} 获得护盾`;
-    case "waited": return `${name(event.actor_id)} 原地等待`;
-    case "turn_started": return `轮到 ${name(event.player_id)}`;
-    case "game_finished": return event.winner_id ? `${name(event.winner_id)} 成为最后幸存者` : "无人幸存";
     default: return event.type;
   }
+}
+
+function commandText(command) {
+  switch (command.type) {
+    case "move": return `向${directionName(command.direction)}移动`;
+    case "shoot": return `向${directionName(command.direction)}射击`;
+    case "wait": return "等待";
+    case "suicide": return "结束自己";
+    default: return command.type;
+  }
+}
+
+function notificationText(notification) {
+  switch (notification.type) {
+    case "match_started": return `对局开始 · 随机种子 ${notification.seed}`;
+    case "match_finished": return notification.winner_id ? `${playerName(notification.winner_id)} 成为最后幸存者` : "对局结束 · 无人幸存";
+    default: return notification.type;
+  }
+}
+
+function playerName(id) {
+  return view.players.find((player) => player.id === id)?.name || `玩家 ${id}`;
 }
 
 function canAct() {

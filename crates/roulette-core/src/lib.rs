@@ -10,15 +10,16 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use roulette_domain::{
-    BlockReason, CellView, CreateGameConfig, Direction, EliminationCause, GameEvent, GameState,
-    GameStatus, GameView, PlayerCommand, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position,
+    BlockReason, CellView, CreateGameConfig, Direction, EliminationCause, GameEvent,
+    GameNotification, GameRecord, GameRecordContent, GameState, GameStatus, GameView,
+    NotificationLevel, PlayerCommand, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position,
     RngStreams, Terrain,
 };
 
 const MIN_PLAYERS: usize = 3;
 const MAX_PLAYERS: usize = 6;
 const BASE_SHOT_RANGE: u8 = 5;
-const EVENT_VIEW_LIMIT: usize = 40;
+const RECORD_VIEW_LIMIT: usize = 60;
 
 /// Errors returned when a state or command violates the rules contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,11 +146,21 @@ impl GameEngine {
             round: 1,
             status: GameStatus::Running,
             rng,
-            events: vec![
-                GameEvent::MatchStarted { seed: config.seed },
-                GameEvent::TurnStarted {
-                    player_id: first_player,
-                    round: 1,
+            next_record_sequence: 3,
+            records: vec![
+                GameRecord {
+                    sequence: 1,
+                    content: GameRecordContent::Notification {
+                        level: NotificationLevel::Info,
+                        notification: GameNotification::MatchStarted { seed: config.seed },
+                    },
+                },
+                GameRecord {
+                    sequence: 2,
+                    content: GameRecordContent::Turn {
+                        player_id: first_player,
+                        round: 1,
+                    },
                 },
             ],
         })
@@ -173,7 +184,7 @@ impl GameEngine {
             ))
     }
 
-    /// Applies one validated command and returns only the events it produced.
+    /// Applies one validated command and returns the log records it produced.
     ///
     /// # Errors
     ///
@@ -183,7 +194,7 @@ impl GameEngine {
         state: &mut GameState,
         actor_id: PlayerId,
         command: PlayerCommand,
-    ) -> Result<Vec<GameEvent>, CoreError> {
+    ) -> Result<Vec<GameRecord>, CoreError> {
         let expected = Self::current_player_id(state)?;
         if expected != actor_id {
             return Err(CoreError::NotCurrentTurn {
@@ -196,7 +207,8 @@ impl GameEngine {
             return Err(CoreError::PlayerEliminated(actor_id));
         }
 
-        let event_start = state.events.len();
+        let record_start = state.records.len();
+        append_record(state, GameRecordContent::Action { actor_id, command })?;
         match command {
             PlayerCommand::Move { direction } => {
                 state.players[actor_index].consecutive_shots = 0;
@@ -205,11 +217,10 @@ impl GameEngine {
             PlayerCommand::Shoot { direction } => apply_shot(state, actor_index, direction)?,
             PlayerCommand::Wait => {
                 state.players[actor_index].consecutive_shots = 0;
-                state.events.push(GameEvent::Waited { actor_id });
             }
             PlayerCommand::Suicide => {
                 state.players[actor_index].consecutive_shots = 0;
-                eliminate_player(state, actor_index, EliminationCause::Suicide, None, false);
+                eliminate_player(state, actor_index, EliminationCause::Suicide, None, false)?;
             }
         }
 
@@ -219,7 +230,7 @@ impl GameEngine {
             .checked_add(1)
             .ok_or(CoreError::InvalidState("revision overflow"))?;
         finish_or_advance_turn(state)?;
-        Ok(state.events[event_start..].to_vec())
+        Ok(state.records[record_start..].to_vec())
     }
 
     /// Chooses a simple deterministic random command for the current bot.
@@ -292,7 +303,7 @@ impl GameEngine {
                 })
             })
             .collect::<Result<Vec<_>, CoreError>>()?;
-        let event_start = state.events.len().saturating_sub(EVENT_VIEW_LIMIT);
+        let record_start = state.records.len().saturating_sub(RECORD_VIEW_LIMIT);
         let current_player_id = if matches!(state.status, GameStatus::Running) {
             Some(Self::current_player_id(state)?)
         } else {
@@ -309,7 +320,7 @@ impl GameEngine {
             human_player_id,
             round: state.round,
             status: state.status,
-            events: state.events[event_start..].to_vec(),
+            records: state.records[record_start..].to_vec(),
         })
     }
 }
@@ -324,26 +335,35 @@ fn apply_move(
         .position
         .ok_or(CoreError::InvalidState("living actor has no position"))?;
     let Some(target) = step_position(from, direction, state.map_size) else {
-        state.events.push(GameEvent::MoveBlocked {
-            actor_id,
-            reason: BlockReason::Boundary,
-        });
+        push_event(
+            state,
+            GameEvent::MoveBlocked {
+                actor_id,
+                reason: BlockReason::Boundary,
+            },
+        )?;
         return Ok(());
     };
     let target_index = map_index(target, state.map_size)?;
     match state.terrain[target_index] {
         Terrain::Wall => {
-            state.events.push(GameEvent::MoveBlocked {
-                actor_id,
-                reason: BlockReason::Wall,
-            });
+            push_event(
+                state,
+                GameEvent::MoveBlocked {
+                    actor_id,
+                    reason: BlockReason::Wall,
+                },
+            )?;
             return Ok(());
         }
         Terrain::Crate => {
-            state.events.push(GameEvent::MoveBlocked {
-                actor_id,
-                reason: BlockReason::Crate,
-            });
+            push_event(
+                state,
+                GameEvent::MoveBlocked {
+                    actor_id,
+                    reason: BlockReason::Crate,
+                },
+            )?;
             return Ok(());
         }
         _ => {}
@@ -353,11 +373,14 @@ fn apply_move(
         let defender_id = state.players[defender_index].id;
         let attacker_wins = random_index(&mut state.rng.encounter, 2)? == 0;
         let winner_id = if attacker_wins { actor_id } else { defender_id };
-        state.events.push(GameEvent::ElbowDuel {
-            attacker_id: actor_id,
-            defender_id,
-            winner_id,
-        });
+        push_event(
+            state,
+            GameEvent::ElbowDuel {
+                attacker_id: actor_id,
+                defender_id,
+                winner_id,
+            },
+        )?;
         if attacker_wins {
             eliminate_player(
                 state,
@@ -365,13 +388,16 @@ fn apply_move(
                 EliminationCause::ElbowDuel,
                 Some(actor_id),
                 false,
-            );
+            )?;
             state.players[actor_index].position = Some(target);
-            state.events.push(GameEvent::Moved {
-                actor_id,
-                from,
-                to: target,
-            });
+            push_event(
+                state,
+                GameEvent::Moved {
+                    actor_id,
+                    from,
+                    to: target,
+                },
+            )?;
             resolve_landing_terrain(state, actor_index, target)?;
         } else {
             eliminate_player(
@@ -380,17 +406,20 @@ fn apply_move(
                 EliminationCause::ElbowDuel,
                 Some(defender_id),
                 false,
-            );
+            )?;
         }
         return Ok(());
     }
 
     state.players[actor_index].position = Some(target);
-    state.events.push(GameEvent::Moved {
-        actor_id,
-        from,
-        to: target,
-    });
+    push_event(
+        state,
+        GameEvent::Moved {
+            actor_id,
+            from,
+            to: target,
+        },
+    )?;
     resolve_landing_terrain(state, actor_index, target)
 }
 
@@ -403,25 +432,34 @@ fn resolve_landing_terrain(
     match state.terrain[terrain_index] {
         Terrain::Mine => {
             state.terrain[terrain_index] = Terrain::Empty;
-            state.events.push(GameEvent::TerrainChanged {
-                position,
-                from: Terrain::Mine,
-                to: Terrain::Empty,
-            });
-            eliminate_player(state, actor_index, EliminationCause::Mine, None, true);
+            push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position,
+                    from: Terrain::Mine,
+                    to: Terrain::Empty,
+                },
+            )?;
+            eliminate_player(state, actor_index, EliminationCause::Mine, None, true)?;
         }
         Terrain::Medkit => {
             state.players[actor_index].has_shield = true;
             state.terrain[terrain_index] = Terrain::Empty;
-            state.events.push(GameEvent::ItemCollected {
-                player_id: state.players[actor_index].id,
-                item: Terrain::Medkit,
-            });
-            state.events.push(GameEvent::TerrainChanged {
-                position,
-                from: Terrain::Medkit,
-                to: Terrain::Empty,
-            });
+            push_event(
+                state,
+                GameEvent::ItemCollected {
+                    player_id: state.players[actor_index].id,
+                    item: Terrain::Medkit,
+                },
+            )?;
+            push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position,
+                    from: Terrain::Medkit,
+                    to: Terrain::Empty,
+                },
+            )?;
         }
         _ => {}
     }
@@ -439,24 +477,33 @@ fn apply_shot(
         .saturating_add(1);
     if state.players[actor_index].consecutive_shots >= 3 {
         state.players[actor_index].consecutive_shots = 0;
-        state.events.push(GameEvent::EmptyChamber {
-            actor_id,
-            forced: true,
-        });
+        push_event(
+            state,
+            GameEvent::EmptyChamber {
+                actor_id,
+                forced: true,
+            },
+        )?;
         return Ok(());
     }
     if random_index(&mut state.rng.combat, 4)? == 0 {
-        state.events.push(GameEvent::EmptyChamber {
-            actor_id,
-            forced: false,
-        });
+        push_event(
+            state,
+            GameEvent::EmptyChamber {
+                actor_id,
+                forced: false,
+            },
+        )?;
         return Ok(());
     }
 
-    state.events.push(GameEvent::ShotFired {
-        actor_id,
-        direction,
-    });
+    push_event(
+        state,
+        GameEvent::ShotFired {
+            actor_id,
+            direction,
+        },
+    )?;
     let origin = state.players[actor_index]
         .position
         .ok_or(CoreError::InvalidState("living actor has no position"))?;
@@ -479,11 +526,14 @@ fn apply_shot(
             Terrain::Wall => break,
             Terrain::Crate => {
                 state.terrain[terrain_index] = Terrain::Empty;
-                state.events.push(GameEvent::TerrainChanged {
-                    position: cursor,
-                    from: Terrain::Crate,
-                    to: Terrain::Empty,
-                });
+                push_event(
+                    state,
+                    GameEvent::TerrainChanged {
+                        position: cursor,
+                        from: Terrain::Crate,
+                        to: Terrain::Empty,
+                    },
+                )?;
                 hit_something = true;
                 break;
             }
@@ -500,14 +550,14 @@ fn apply_shot(
                 EliminationCause::Shot,
                 Some(actor_id),
                 true,
-            );
+            )?;
             hit_something = true;
             break;
         }
     }
 
     if !hit_something {
-        state.events.push(GameEvent::ShotMissed { actor_id });
+        push_event(state, GameEvent::ShotMissed { actor_id })?;
     }
     Ok(())
 }
@@ -525,7 +575,7 @@ fn resolve_water(state: &mut GameState, actor_index: usize) -> Result<(), CoreEr
             state.players[actor_index].water_turns.saturating_add(1);
         if state.players[actor_index].water_turns >= 2 {
             let eliminated =
-                eliminate_player(state, actor_index, EliminationCause::Drowned, None, true);
+                eliminate_player(state, actor_index, EliminationCause::Drowned, None, true)?;
             if !eliminated {
                 state.players[actor_index].water_turns = 0;
             }
@@ -542,24 +592,24 @@ fn eliminate_player(
     cause: EliminationCause,
     by_player_id: Option<PlayerId>,
     allow_shield: bool,
-) -> bool {
-    let player = &mut state.players[player_index];
-    if allow_shield && player.has_shield {
-        player.has_shield = false;
-        state.events.push(GameEvent::ShieldConsumed {
-            player_id: player.id,
-            cause,
-        });
-        return false;
+) -> Result<bool, CoreError> {
+    let player_id = state.players[player_index].id;
+    if allow_shield && state.players[player_index].has_shield {
+        state.players[player_index].has_shield = false;
+        push_event(state, GameEvent::ShieldConsumed { player_id, cause })?;
+        return Ok(false);
     }
-    player.status = PlayerStatus::Eliminated;
-    player.position = None;
-    state.events.push(GameEvent::PlayerEliminated {
-        player_id: player.id,
-        cause,
-        by_player_id,
-    });
-    true
+    state.players[player_index].status = PlayerStatus::Eliminated;
+    state.players[player_index].position = None;
+    push_event(
+        state,
+        GameEvent::PlayerEliminated {
+            player_id,
+            cause,
+            by_player_id,
+        },
+    )?;
+    Ok(true)
 }
 
 fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
@@ -572,7 +622,13 @@ fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
     if living_players.len() <= 1 {
         let winner_id = living_players.first().copied();
         state.status = GameStatus::Finished { winner_id };
-        state.events.push(GameEvent::GameFinished { winner_id });
+        append_record(
+            state,
+            GameRecordContent::Notification {
+                level: NotificationLevel::Success,
+                notification: GameNotification::MatchFinished { winner_id },
+            },
+        )?;
         return Ok(());
     }
 
@@ -590,16 +646,33 @@ fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
                     .ok_or(CoreError::InvalidState("round overflow"))?;
             }
             state.current_turn_index = candidate_index;
-            state.events.push(GameEvent::TurnStarted {
-                player_id: candidate_id,
-                round: state.round,
-            });
+            append_record(
+                state,
+                GameRecordContent::Turn {
+                    player_id: candidate_id,
+                    round: state.round,
+                },
+            )?;
             return Ok(());
         }
     }
     Err(CoreError::InvalidState(
         "no living player found for next turn",
     ))
+}
+
+fn push_event(state: &mut GameState, event: GameEvent) -> Result<(), CoreError> {
+    append_record(state, GameRecordContent::Event { event })
+}
+
+fn append_record(state: &mut GameState, content: GameRecordContent) -> Result<(), CoreError> {
+    let sequence = state.next_record_sequence;
+    state.next_record_sequence = state
+        .next_record_sequence
+        .checked_add(1)
+        .ok_or(CoreError::InvalidState("record sequence overflow"))?;
+    state.records.push(GameRecord { sequence, content });
+    Ok(())
 }
 
 fn player_index(state: &GameState, player_id: PlayerId) -> Result<usize, CoreError> {
@@ -776,7 +849,7 @@ mod tests {
     fn third_consecutive_shot_is_forced_empty() {
         let mut state = GameEngine::create_game(test_config(11)).expect("game");
         state.players[0].consecutive_shots = 2;
-        let events = GameEngine::apply_command(
+        let records = GameEngine::apply_command(
             &mut state,
             PlayerId(1),
             PlayerCommand::Shoot {
@@ -784,11 +857,16 @@ mod tests {
             },
         )
         .expect("shot");
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::EmptyChamber {
-                actor_id: PlayerId(1),
-                forced: true
+        assert!(records.iter().any(|record| matches!(
+            record,
+            GameRecord {
+                content: GameRecordContent::Event {
+                    event: GameEvent::EmptyChamber {
+                        actor_id: PlayerId(1),
+                        forced: true
+                    }
+                },
+                ..
             }
         )));
     }
@@ -797,7 +875,7 @@ mod tests {
     fn blocked_move_consumes_turn_and_revision() {
         let mut state = GameEngine::create_game(test_config(15)).expect("game");
         state.players[0].position = Some(Position { x: 0, y: 0 });
-        let events = GameEngine::apply_command(
+        let records = GameEngine::apply_command(
             &mut state,
             PlayerId(1),
             PlayerCommand::Move {
@@ -806,13 +884,67 @@ mod tests {
         )
         .expect("blocked move");
         assert_eq!(state.revision, 1);
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::MoveBlocked {
-                actor_id: PlayerId(1),
-                reason: BlockReason::Boundary
+        assert!(records.iter().any(|record| matches!(
+            record,
+            GameRecord {
+                content: GameRecordContent::Event {
+                    event: GameEvent::MoveBlocked {
+                        actor_id: PlayerId(1),
+                        reason: BlockReason::Boundary
+                    }
+                },
+                ..
             }
         )));
+        assert!(matches!(
+            records.first(),
+            Some(GameRecord {
+                content: GameRecordContent::Action {
+                    actor_id: PlayerId(1),
+                    command: PlayerCommand::Move { .. }
+                },
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn action_records_do_not_require_an_event_record() {
+        let mut state = GameEngine::create_game(test_config(21)).expect("game");
+        assert!(matches!(
+            state.records.first(),
+            Some(GameRecord {
+                sequence: 1,
+                content: GameRecordContent::Notification { .. }
+            })
+        ));
+
+        let records =
+            GameEngine::apply_command(&mut state, PlayerId(1), PlayerCommand::Wait).expect("wait");
+        assert_eq!(records.len(), 2);
+        assert!(matches!(
+            records[0],
+            GameRecord {
+                content: GameRecordContent::Action {
+                    command: PlayerCommand::Wait,
+                    ..
+                },
+                ..
+            }
+        ));
+        assert!(matches!(
+            records[1],
+            GameRecord {
+                content: GameRecordContent::Turn { .. },
+                ..
+            }
+        ));
+        assert!(
+            state
+                .records
+                .windows(2)
+                .all(|pair| pair[1].sequence == pair[0].sequence + 1)
+        );
     }
 
     #[test]

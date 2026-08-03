@@ -4,8 +4,8 @@
 
 | **Cargo 包** | **Rust crate 名** | **状态** | **职责** | **允许依赖** |
 |---------------|-------------------|----------|----------|--------------|
-| `roulette-domain` | `roulette_domain` | MVP 已实现 | 可序列化的 ID、命令、事件、权威状态、随机流和 Web 视图。 | `serde`；不依赖运行时。 |
-| `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、事件生成、胜负和视图投影。 | `roulette-domain`。 |
+| `roulette-domain` | `roulette_domain` | MVP 已实现 | 可序列化的 ID、命令、事件、分类记录、通知、权威状态、随机流和 Web 视图。 | `serde`；不依赖运行时。 |
+| `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、分类记录生成、胜负和视图投影。 | `roulette-domain`。 |
 | `roulette-host` | `roulette_host` | 本地单局 MVP | revision 校验、人类控制权和简单随机 Bot 调度；公网房间、重连、超时和持久化尚未实现。 | `roulette-core`、`roulette-domain`。 |
 | `roulette-backend` | 不作为库导出 | 本地 Web MVP | localhost HTTP API、内存单局、嵌入 Web 静态资源和进程生命周期；未来可继续作为公网组合入口。 | `roulette-host`、`roulette-domain`、Axum、Tokio。 |
 
