@@ -185,6 +185,7 @@ impl LocalMatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roulette_domain::GameRecordContent;
 
     fn local_match(seed: u64) -> LocalMatch {
         LocalMatch::new(&LocalMatchConfig {
@@ -208,6 +209,21 @@ mod tests {
         assert!(
             !matches!(next.status, GameStatus::Running)
                 || next.current_player_id == Some(next.human_player_id)
+        );
+        let bot_action_count = next
+            .records
+            .iter()
+            .filter(|record| {
+                matches!(
+                    &record.content,
+                    GameRecordContent::Action { actor_id, .. }
+                        if *actor_id != next.human_player_id
+                )
+            })
+            .count();
+        assert_eq!(
+            u64::try_from(bot_action_count).expect("bot action count"),
+            next.revision - 1
         );
     }
 

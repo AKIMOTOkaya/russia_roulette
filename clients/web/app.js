@@ -157,7 +157,7 @@ function renderPlayers() {
 }
 
 function renderRecords() {
-  elements.records.replaceChildren(...[...view.records].reverse().map((record) => {
+  elements.records.replaceChildren(...view.records.map((record) => {
     const item = document.createElement("li");
     item.className = `record ${record.category}`;
 
@@ -176,6 +176,7 @@ function renderRecords() {
     item.append(badge, content, sequence);
     return item;
   }));
+  elements.records.scrollTop = elements.records.scrollHeight;
 }
 
 function recordText(record) {
@@ -192,12 +193,11 @@ function recordText(record) {
 function eventText(event) {
   const name = playerName;
   switch (event.type) {
-    case "moved": return `${name(event.actor_id)} 移动到 (${event.to.x}, ${event.to.y})`;
-    case "move_blocked": return `${name(event.actor_id)} 的移动被阻挡`;
+    case "moved": return `位置变化 · ${name(event.actor_id)}：(${event.from.x}, ${event.from.y}) → (${event.to.x}, ${event.to.y})`;
+    case "move_blocked": return `路径受阻 · ${name(event.actor_id)} 未能改变位置`;
     case "elbow_duel": return `${name(event.attacker_id)} 与 ${name(event.defender_id)} 发生肘击，${name(event.winner_id)} 胜出`;
-    case "shot_fired": return `${name(event.actor_id)} 向${directionName(event.direction)}射击`;
-    case "empty_chamber": return `${name(event.actor_id)} 扣动扳机——空膛`;
-    case "shot_missed": return `${name(event.actor_id)} 的子弹没有命中`;
+    case "empty_chamber": return `枪膛状态 · ${name(event.actor_id)} 本次没有射出子弹`;
+    case "shot_missed": return `弹道结果 · ${name(event.actor_id)} 的子弹未命中目标`;
     case "shield_consumed": return `${name(event.player_id)} 的护盾挡下致命伤害`;
     case "player_eliminated": return `${name(event.player_id)} 出局（${causeName(event.cause)}）`;
     case "terrain_changed": return `(${event.position.x}, ${event.position.y}) 的地形发生变化`;

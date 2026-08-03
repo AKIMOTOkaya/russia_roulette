@@ -497,13 +497,6 @@ fn apply_shot(
         return Ok(());
     }
 
-    push_event(
-        state,
-        GameEvent::ShotFired {
-            actor_id,
-            direction,
-        },
-    )?;
     let origin = state.players[actor_index]
         .position
         .ok_or(CoreError::InvalidState("living actor has no position"))?;

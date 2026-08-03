@@ -192,13 +192,6 @@ pub enum GameEvent {
         /// Surviving player.
         winner_id: PlayerId,
     },
-    /// A bullet left the revolver.
-    ShotFired {
-        /// Acting player.
-        actor_id: PlayerId,
-        /// Firing direction.
-        direction: Direction,
-    },
     /// The revolver clicked without firing.
     EmptyChamber {
         /// Acting player.

@@ -97,7 +97,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .records-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .records-heading h2 { margin: 7px 0 0; font-family: Georgia, "Songti SC", serif; font-size: 1.25rem; font-weight: 500; }
 .records-heading > p { margin: 0; color: var(--muted); font-size: 0.68rem; letter-spacing: 0.08em; }
-#records { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 34px; max-height: 260px; margin: 18px 0 0; padding: 0; overflow: auto; list-style: none; }
+#records { display: grid; grid-template-columns: 1fr; max-height: 320px; margin: 18px 0 0; padding: 0; overflow: auto; list-style: none; }
 .record { display: grid; grid-template-columns: 42px 1fr auto; gap: 10px; align-items: baseline; border-top: 1px solid #2e2926; padding: 9px 0; color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.72rem; line-height: 1.5; }
 .record-badge { color: #a49a91; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.12em; }
 .record.action .record-badge { color: #d7b56c; }
@@ -105,7 +105,7 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
 .record.turn .record-badge { color: #6ba3ac; }
 .record.notification .record-badge { color: #79ad83; }
 .record-sequence { color: #5f5852; font-size: 0.62rem; }
-.record:first-child, .record:nth-child(2) { color: var(--ink); }
+.record:last-child { color: var(--ink); }
 .toast { position: fixed; right: 24px; bottom: 24px; max-width: min(420px, calc(100vw - 48px)); border: 1px solid var(--accent); padding: 14px 18px; color: var(--ink); background: #221916; box-shadow: 0 18px 60px #000a; }
 .hidden { display: none !important; }
 
@@ -130,7 +130,5 @@ button:disabled { cursor: not-allowed; opacity: 0.35; }
   .board { gap: 3px; }
   .board, .legend { margin-right: auto; margin-left: auto; }
   .records-heading { align-items: start; flex-direction: column; gap: 8px; }
-  #records { grid-template-columns: 1fr; }
-  .record:nth-child(2) { color: var(--muted); }
   .legend { gap: 9px; }
 }
