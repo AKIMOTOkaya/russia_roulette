@@ -13,6 +13,21 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct PlayerId(pub u32);
 
+/// Browser-tab identity used by the local lobby.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TabId(pub String);
+
+/// Case-insensitive five-character room identifier.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RoomId(pub String);
+
+/// Stable room-member identifier for either a human tab or a bot slot.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RoomMemberId(pub String);
+
 /// A coordinate on the square map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
@@ -398,4 +413,82 @@ pub struct GameView {
     pub status: GameStatus,
     /// Recent chronological actions, events, turns and notifications.
     pub records: Vec<GameRecord>,
+}
+
+/// Lifecycle phase of a local lobby room.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoomPhase {
+    /// Humans and bots may join; the owner may configure and start the match.
+    Waiting,
+    /// A match is currently running.
+    Playing,
+    /// The current match finished; members may inspect its final state.
+    Finished,
+}
+
+/// One human or bot displayed in the room roster.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomMemberView {
+    /// Stable identifier used for bot removal and owner transfer.
+    pub id: RoomMemberId,
+    /// Display name.
+    pub name: String,
+    /// Human tab or automated player.
+    pub kind: PlayerKind,
+    /// Whether this member currently owns the room.
+    pub is_owner: bool,
+    /// Whether this human member belongs to the requesting tab.
+    pub is_self: bool,
+    /// Match-local player identifier after the match starts.
+    pub player_id: Option<PlayerId>,
+}
+
+/// Room card shown in the lobby.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomSummary {
+    /// Five-character room identifier.
+    pub id: RoomId,
+    /// Human-readable room name.
+    pub name: String,
+    /// Waiting, playing, or finished.
+    pub phase: RoomPhase,
+    /// Number of human tabs currently present.
+    pub human_count: usize,
+    /// Number of bot slots currently present.
+    pub bot_count: usize,
+    /// Maximum total member count supported by the MVP Core.
+    pub capacity: usize,
+    /// Whether joining requires the configured room password.
+    pub password_required: bool,
+    /// Whether the requesting tab is already a room member.
+    pub is_member: bool,
+}
+
+/// Tab-specific lobby response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LobbyView {
+    /// All active rooms.
+    pub rooms: Vec<RoomSummary>,
+    /// Room currently containing this tab, if any.
+    pub current_room_id: Option<RoomId>,
+}
+
+/// Tab-specific room response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomView {
+    /// Five-character room identifier.
+    pub id: RoomId,
+    /// Human-readable room name.
+    pub name: String,
+    /// Waiting, playing, or finished.
+    pub phase: RoomPhase,
+    /// Password shown to all members after a successful join.
+    pub password: Option<String>,
+    /// Members in stable seat order, including bots.
+    pub members: Vec<RoomMemberView>,
+    /// Whether the requesting tab owns this room.
+    pub is_owner: bool,
+    /// Current match view after the room has started.
+    pub game: Option<GameView>,
 }

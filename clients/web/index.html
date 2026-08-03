@@ -3,100 +3,164 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#12100f" />
-    <title>俄罗斯轮盘 · 本地试作</title>
+    <meta name="theme-color" content="#101315" />
+    <title>俄罗斯轮盘 · 本地大厅</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="shell">
       <header class="masthead">
-        <div>
-          <p class="eyebrow">LOCAL TABLE · EARLY MVP</p>
-          <h1>俄罗斯轮盘</h1>
+        <a class="brand" href="/" aria-label="返回大厅">
+          <span class="brand-mark">RR</span>
+          <span><strong>俄罗斯轮盘</strong><small>LOCAL PLAYTEST</small></span>
+        </a>
+        <div class="session-state">
+          <span class="status-dot" id="connection-dot"></span>
+          <span id="connection-status">正在连接</span>
+          <code id="tab-identity">TAB · ----</code>
         </div>
-        <div class="status-pill" id="connection-status">等待开局</div>
       </header>
 
-      <section class="setup panel" id="setup-panel">
-        <div class="setup-copy">
-          <p class="section-number">00 / 开桌</p>
-          <h2>你和随机机器人，只有一个人能离桌。</h2>
-          <p>每个动作都会推进回合。移动寻找角度，射击可能空膛；第三次连续射击一定空膛。</p>
+      <section id="lobby-panel">
+        <div class="lobby-hero">
+          <div>
+            <p class="eyebrow">LOCAL ROOM LOBBY / 本地房间大厅</p>
+            <h1>找一张桌，<br />把命运交给轮盘。</h1>
+            <p class="hero-copy">每个浏览器标签页都是一名独立玩家。创建房间、邀请同伴，人数不够时再让随机机器人补位。</p>
+          </div>
+          <div class="hero-stat">
+            <strong id="room-count">00</strong>
+            <span>ACTIVE ROOMS<br />当前房间</span>
+          </div>
         </div>
-        <form id="setup-form">
-          <label>
-            你的名字
-            <input id="player-name" name="player_name" maxlength="24" value="玩家" required />
-          </label>
-          <label>
-            机器人数
-            <select id="bot-count" name="bot_count">
-              <option value="2">2</option>
-              <option value="3" selected>3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-            </select>
-          </label>
-          <label>
-            随机种子 <span>可留空</span>
-            <input id="seed" name="seed" type="number" min="0" placeholder="用于复现同一局" />
-          </label>
-          <button class="primary" type="submit">开始新对局</button>
-        </form>
+
+        <div class="lobby-grid">
+          <section class="panel lobby-actions">
+            <div class="panel-heading">
+              <div><p class="section-number">01 / 进入牌桌</p><h2>创建或加入</h2></div>
+            </div>
+            <div class="action-forms">
+              <form id="create-room-form" class="stack-form">
+                <h3>创建房间</h3>
+                <label>你的名字<input id="create-player-name" maxlength="24" value="玩家" required /></label>
+                <label>房间名称<input id="room-name" maxlength="32" value="临时牌桌" required /></label>
+                <label class="check-line"><input id="create-password-enabled" type="checkbox" /><span>使用房间密码</span></label>
+                <label id="create-password-field" class="hidden">房间密码<input id="create-room-password" maxlength="32" autocomplete="off" /></label>
+                <button class="primary" type="submit">创建房间</button>
+              </form>
+              <form id="join-room-form" class="stack-form divided">
+                <h3>加入房间</h3>
+                <label>你的名字<input id="join-player-name" maxlength="24" value="玩家" required /></label>
+                <label>五位房间号<input id="join-room-code" class="room-code-input" maxlength="5" autocomplete="off" placeholder="A7K2M" required /></label>
+                <label>房间密码 <span>没有则留空</span><input id="join-room-password" maxlength="32" autocomplete="off" /></label>
+                <button class="secondary" type="submit">加入房间</button>
+              </form>
+            </div>
+          </section>
+
+          <section class="panel founder-panel">
+            <div class="panel-heading">
+              <div><p class="section-number">02 / 服务设置</p><h2>本机创始人</h2></div>
+              <span class="mini-badge" id="founder-badge">未认证</span>
+            </div>
+            <p>启动服务时会生成或注入一个临时密码。验证后，可决定是否允许局域网设备访问本大厅。</p>
+            <form id="founder-auth-form" class="inline-form">
+              <input id="founder-password" type="password" autocomplete="current-password" placeholder="输入临时密码" required />
+              <button type="submit">验证</button>
+            </form>
+            <div class="server-setting">
+              <div><strong>暴露到局域网</strong><small id="lan-description">当前仅本机可访问</small></div>
+              <label class="switch"><input id="lan-toggle" type="checkbox" disabled /><span></span></label>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel room-directory">
+          <div class="panel-heading">
+            <div><p class="section-number">03 / 房间目录</p><h2>正在等待的牌桌</h2></div>
+            <button class="icon-button" id="refresh-lobby" type="button" aria-label="刷新房间">↻</button>
+          </div>
+          <div class="room-list" id="room-list"></div>
+          <div class="empty-state hidden" id="empty-lobby"><strong>还没有房间</strong><span>创建第一张牌桌，它会立即出现在这里。</span></div>
+        </section>
       </section>
 
-      <section class="game-layout hidden" id="game-panel">
-        <aside class="roster panel">
-          <p class="section-number">01 / 玩家</p>
-          <div id="players"></div>
-          <button class="quiet" id="new-game-button" type="button">重开一桌</button>
-        </aside>
-
-        <section class="board-wrap panel">
-          <div class="board-heading">
-            <div>
-              <p class="section-number">02 / 桌面</p>
-              <h2 id="turn-title">等待开局</h2>
-            </div>
-            <div class="revision" id="revision">REV 0</div>
+      <section class="hidden" id="room-panel">
+        <div class="room-topbar panel">
+          <div>
+            <button class="back-button" id="leave-room" type="button">← 离开房间</button>
+            <p class="section-number">ROOM / <span id="room-code">-----</span></p>
+            <h1 id="room-title">房间</h1>
           </div>
-          <div class="board-stage">
-            <div class="playfield">
-              <div class="board" id="board" aria-label="游戏地图"></div>
-              <div class="legend">
-                <span>▦ 木箱</span><span>≈ 水域</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span>
-              </div>
-            </div>
-
-            <aside class="controls">
-              <p class="section-number">03 / 行动</p>
-              <div class="mode-switch" role="group" aria-label="行动模式">
-                <button class="mode active" data-mode="move" type="button">移动</button>
-                <button class="mode" data-mode="shoot" type="button">射击</button>
-              </div>
-              <div class="direction-pad">
-                <button data-direction="up" type="button" aria-label="向上">↑</button>
-                <button data-direction="left" type="button" aria-label="向左">←</button>
-                <button data-direction="down" type="button" aria-label="向下">↓</button>
-                <button data-direction="right" type="button" aria-label="向右">→</button>
-              </div>
-              <button class="secondary action" data-command="wait" type="button">等待</button>
-              <button class="danger action" data-command="suicide" type="button">结束自己</button>
-              <p class="shortcut">方向键移动<br />Shift + 方向键射击<br />空格等待</p>
-            </aside>
+          <div class="room-facts">
+            <div><small>状态</small><strong id="room-phase">等待中</strong></div>
+            <div><small>房间密码</small><strong id="room-password">未设置</strong></div>
           </div>
-        </section>
+        </div>
 
-        <section class="records panel">
-          <div class="records-heading">
-            <div>
-              <p class="section-number">04 / 全局记录</p>
-              <h2>对局时间线</h2>
+        <div class="room-layout">
+          <aside class="panel room-members">
+            <div class="panel-heading compact">
+              <div><p class="section-number">01 / 成员</p><h2 id="member-count">0 / 6</h2></div>
+              <button class="icon-button owner-only waiting-only" id="add-bot" type="button" aria-label="添加机器人">＋BOT</button>
             </div>
-            <p>行动 · 事件 · 回合 · 通知</p>
-          </div>
-          <ol id="records"></ol>
-        </section>
+            <div id="members"></div>
+            <div class="owner-controls owner-only">
+              <label class="waiting-only">随机种子 <span>可留空</span><input id="room-seed" type="number" min="0" placeholder="自动生成" /></label>
+              <button class="primary waiting-only" id="start-room" type="button">开始对局</button>
+              <button class="danger" id="dissolve-room" type="button">解散房间</button>
+            </div>
+            <p class="room-hint" id="room-hint">至少需要 3 名成员才能开始。</p>
+          </aside>
+
+          <section class="panel waiting-room" id="waiting-room">
+            <p class="section-number">02 / 等候区</p>
+            <div class="waiting-symbol">05</div>
+            <h2>等待房主开局</h2>
+            <p>分享上方五位房间号。若房间设置了密码，成功进入后所有成员都能在房间内看到它。</p>
+          </section>
+
+          <section class="game-workspace hidden" id="game-workspace">
+            <section class="board-wrap panel">
+              <div class="board-heading">
+                <div><p class="section-number">02 / 桌面</p><h2 id="turn-title">等待行动</h2></div>
+                <div class="revision" id="revision">REV 0</div>
+              </div>
+              <div class="board-stage">
+                <div class="playfield">
+                  <div class="board" id="board" aria-label="游戏地图"></div>
+                  <div class="legend"><span>▦ 木箱</span><span>≈ 水域</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span></div>
+                </div>
+                <aside class="controls">
+                  <p class="section-number">03 / 行动</p>
+                  <div class="mode-switch" role="group" aria-label="行动模式">
+                    <button class="mode active" data-mode="move" type="button">移动</button>
+                    <button class="mode" data-mode="shoot" type="button">射击</button>
+                  </div>
+                  <div class="direction-pad">
+                    <button data-direction="up" type="button" aria-label="向上">↑</button>
+                    <button data-direction="left" type="button" aria-label="向左">←</button>
+                    <button data-direction="down" type="button" aria-label="向下">↓</button>
+                    <button data-direction="right" type="button" aria-label="向右">→</button>
+                  </div>
+                  <div class="minor-actions">
+                    <button class="secondary" data-command="wait" type="button">等待</button>
+                    <button class="danger" data-command="suicide" type="button">结束自己</button>
+                  </div>
+                  <p class="shortcut">方向键移动 · Shift + 方向键射击 · 空格等待</p>
+                </aside>
+              </div>
+            </section>
+
+            <section class="records panel">
+              <div class="records-heading">
+                <div><p class="section-number">04 / 全局记录</p><h2>对局时间线</h2></div>
+                <p>行动 · 事件 · 回合 · 通知</p>
+              </div>
+              <ol id="records"></ol>
+            </section>
+          </section>
+        </div>
       </section>
     </main>
     <div class="toast hidden" id="toast" role="alert"></div>

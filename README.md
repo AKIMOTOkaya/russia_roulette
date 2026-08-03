@@ -12,7 +12,7 @@ RussianRoulette/
 ├── crates/                # 可复用 Rust 库，不包含进程启动逻辑
 │   ├── roulette-domain/   # 领域 ID、命令、事件、状态与视图
 │   ├── roulette-core/     # 确定性规则状态机
-│   └── roulette-host/     # 房间、命令队列与运行时端口
+│   └── roulette-host/     # 多房间生命周期、权限、Tab 映射与 Bot 调度
 ├── apps/                  # Rust 可执行程序（backend、node、CLI 等）
 │   └── roulette-backend/  # 当前本地 HTTP 服务与未来公网后端组合入口
 ├── clients/               # Web、桌面等客户端，可使用不同语言
@@ -30,7 +30,9 @@ RussianRoulette/
 ## 当前状态
 
 - 已实现 `roulette-domain`、确定性 `roulette-core`、本地 `roulette-host` 与 Axum `roulette-backend` 的 MVP 纵向切片。
-- 已实现可在本机浏览器完成一局的 Web 页面，支持 1 名玩家、2～5 名简单随机 Bot、地图、紧凑操作区、移动、射击、等待、自裁和胜负结算。
+- 已实现本地多房间大厅。每个浏览器标签页是一名独立真人玩家，任何人可创建或通过五位房间号加入房间，房主可设置密码、管理 Bot、转让房主、开局和解散房间。
+- 已实现 3～6 名真人/Bot 混合对局、地图、紧凑操作区、移动、射击、等待、自裁和胜负结算；真人退出进行中对局时由 Bot 接管其席位。
+- 后端启动时支持注入创始人临时密码；本机页面验证后可以实时开启或关闭局域网访问。
 - 对局使用从上到下的单列顺序记录流，分别表达玩家与 Bot 行动、独立事件、回合推进和系统通知，为后续事件系统保留扩展边界。
 - 已整理正式规则、本地 MVP 规则与抽象设计；Web 公网版开发路径暂时保留为后续支线。
 - 已建立 `roulette-backend` 服务器容器骨架，当前只加入 Caddy 使用的 `srv_edge` 网络。
@@ -42,7 +44,13 @@ RussianRoulette/
 cargo run -p roulette-backend
 ```
 
-打开 <http://127.0.0.1:8787>。对局只保存在内存中，停止程序后不会保留。
+启动时终端会显示临时创始人密码。也可以显式注入：
+
+```bash
+cargo run -p roulette-backend -- --founder-password local-only
+```
+
+打开 <http://127.0.0.1:8787>。房间和对局只保存在内存中，停止程序后不会保留。服务监听所有本机接口，但默认拒绝非回环地址；需由已认证的创始人在页面中开启局域网访问。
 
 ## 文档入口
 
