@@ -188,6 +188,8 @@ input::placeholder { color: #555b5d; }
 .board-wrap, .records { padding: 20px; }
 .board-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
 .board-heading h2 { margin: 7px 0 0; font-family: Georgia, "Songti SC", serif; font-size: 1.45rem; font-weight: 400; }
+.board-meta { display: flex; align-items: center; gap: 8px; }
+.weather-badge { border: 1px solid var(--line); padding: 7px 10px; color: var(--gold); font-family: ui-monospace, monospace; font-size: 0.64rem; background: #202628; }
 .revision { border: 1px solid var(--line); padding: 7px 10px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.64rem; }
 .board-stage { display: grid; grid-template-columns: minmax(350px, 1fr) 160px; gap: 14px; align-items: center; }
 .playfield { min-width: 0; }
@@ -195,6 +197,7 @@ input::placeholder { color: #555b5d; }
 .cell { position: relative; display: grid; place-items: center; min-width: 0; border: 1px solid #303638; background: #252b2d; color: #8e9698; font-family: ui-monospace, monospace; font-size: clamp(0.75rem, 1.5vw, 1.25rem); }
 .cell.wall { background: repeating-linear-gradient(135deg, #32383a 0 8px, #272c2e 8px 16px); color: #747b7d; }
 .cell.water { background: #17292e; color: #6ba3ac; }
+.cell.ice { background: #182e38; color: #8ad2ff; border-color: #3b5b6b; }
 .cell.high_ground { background: #332d21; color: var(--gold); }
 .cell.mine { color: var(--accent-soft); }
 .cell.medkit { color: var(--green); }

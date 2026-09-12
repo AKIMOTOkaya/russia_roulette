@@ -28,6 +28,51 @@ pub struct RoomId(pub String);
 #[serde(transparent)]
 pub struct RoomMemberId(pub String);
 
+/// Stable identifier indexing an event definition in the event catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EventId(pub String);
+
+impl EventId {
+    /// Creates a static or owned event identifier.
+    #[must_use]
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+/// Rarity and dramatic impact tier of an event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventTier {
+    /// Common, ordinary events (~10%).
+    #[default]
+    Normal,
+    /// Minor unexpected events (~40%).
+    Uncommon,
+    /// Game-altering events (~30%).
+    Rare,
+    /// High-impact epic events (~15%).
+    Epic,
+    /// Extreme legendary/dramatic events (~5%).
+    Legendary,
+}
+
+/// Global weather and environmental condition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Weather {
+    /// Normal clear conditions without global effect.
+    #[default]
+    Clear,
+    /// Severe blizzard that freezes water into ice and increases sliding chance.
+    Blizzard,
+    /// Oppressive heatwave.
+    Heatwave,
+    /// Dense fog.
+    DenseFog,
+}
+
 /// A coordinate on the square map.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
@@ -69,6 +114,8 @@ pub enum Terrain {
     Mine,
     /// Walkable one-use pickup that grants a single lethal shield.
     Medkit,
+    /// Walkable slippery ice that alters movement and event pools.
+    Ice,
 }
 
 /// Whether a player is controlled by a person or the local random bot.
@@ -251,6 +298,32 @@ pub enum GameEvent {
         /// Item tile consumed by the pickup.
         item: Terrain,
     },
+    /// A weather or environmental shift occurred.
+    WeatherChanged {
+        /// Previous weather.
+        from: Weather,
+        /// New weather.
+        to: Weather,
+    },
+    /// A structured dramatic event resolved by the event system.
+    DramaticEvent {
+        /// Indexed event identifier.
+        event_id: EventId,
+        /// Dramatic rarity tier.
+        tier: EventTier,
+        /// Headline title.
+        title: String,
+        /// Narrative summary text.
+        narrative: String,
+        /// Responsible or affected actor, if any.
+        actor_id: Option<PlayerId>,
+        /// Target position affected, if any.
+        position: Option<Position>,
+        /// BFS wave in the event chain (0 is root direct reaction).
+        wave: u32,
+        /// Monotonic sequence of the parent record that provoked this event.
+        parent_sequence: Option<u64>,
+    },
 }
 
 /// Machine-readable system notifications shown in the comprehensive log.
@@ -348,6 +421,8 @@ pub struct RngStreams {
     pub combat: u64,
     /// Local bot decision stream.
     pub bot: u64,
+    /// Event system random stream.
+    pub events: u64,
 }
 
 /// Complete authoritative game state.
@@ -373,6 +448,8 @@ pub struct GameState {
     pub status: GameStatus,
     /// Explicit random streams required for replay.
     pub rng: RngStreams,
+    /// Active ambient weather.
+    pub weather: Weather,
     /// Sequence number assigned to the next comprehensive log entry.
     pub next_record_sequence: u64,
     /// Complete chronological record of actions, events, turns and notices.
@@ -411,6 +488,8 @@ pub struct GameView {
     pub round: u32,
     /// Running or finished state.
     pub status: GameStatus,
+    /// Active ambient weather.
+    pub weather: Weather,
     /// Recent chronological actions, events, turns and notifications.
     pub records: Vec<GameRecord>,
 }

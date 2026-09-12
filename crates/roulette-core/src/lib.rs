@@ -13,8 +13,10 @@ use roulette_domain::{
     BlockReason, CellView, CreateGameConfig, Direction, EliminationCause, GameEvent,
     GameNotification, GameRecord, GameRecordContent, GameState, GameStatus, GameView,
     NotificationLevel, PlayerCommand, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position,
-    RngStreams, Terrain,
+    RngStreams, Terrain, Weather,
 };
+
+pub mod events;
 
 const MIN_PLAYERS: usize = 3;
 const MAX_PLAYERS: usize = 6;
@@ -98,6 +100,7 @@ impl GameEngine {
             encounter: derive_stream(config.seed, 0x454E_4302),
             combat: derive_stream(config.seed, 0x434F_4D03),
             bot: derive_stream(config.seed, 0x424F_5404),
+            events: derive_stream(config.seed, 0x4556_5405),
         };
         let mut terrain = vec![Terrain::Empty; cell_count];
 
@@ -146,6 +149,7 @@ impl GameEngine {
             round: 1,
             status: GameStatus::Running,
             rng,
+            weather: Weather::Clear,
             next_record_sequence: 3,
             records: vec![
                 GameRecord {
@@ -209,18 +213,25 @@ impl GameEngine {
 
         let record_start = state.records.len();
         append_record(state, GameRecordContent::Action { actor_id, command })?;
-        match command {
-            PlayerCommand::Move { direction } => {
-                state.players[actor_index].consecutive_shots = 0;
-                apply_move(state, actor_index, direction)?;
-            }
-            PlayerCommand::Shoot { direction } => apply_shot(state, actor_index, direction)?,
-            PlayerCommand::Wait => {
-                state.players[actor_index].consecutive_shots = 0;
-            }
-            PlayerCommand::Suicide => {
-                state.players[actor_index].consecutive_shots = 0;
-                eliminate_player(state, actor_index, EliminationCause::Suicide, None, false)?;
+
+        let intent_trigger = events::TriggerPoint::ActionIntent { actor_id, command };
+        let outcome = events::EventTreePipeline::default().run(state, intent_trigger)?;
+        let effective_command = outcome.override_command.unwrap_or(command);
+
+        if !outcome.action_canceled {
+            match effective_command {
+                PlayerCommand::Move { direction } => {
+                    state.players[actor_index].consecutive_shots = 0;
+                    apply_move(state, actor_index, direction)?;
+                }
+                PlayerCommand::Shoot { direction } => apply_shot(state, actor_index, direction)?,
+                PlayerCommand::Wait => {
+                    state.players[actor_index].consecutive_shots = 0;
+                }
+                PlayerCommand::Suicide => {
+                    state.players[actor_index].consecutive_shots = 0;
+                    eliminate_player(state, actor_index, EliminationCause::Suicide, None, false)?;
+                }
             }
         }
 
@@ -320,6 +331,7 @@ impl GameEngine {
             human_player_id,
             round: state.round,
             status: state.status,
+            weather: state.weather,
             records: state.records[record_start..].to_vec(),
         })
     }
@@ -389,16 +401,7 @@ fn apply_move(
                 Some(actor_id),
                 false,
             )?;
-            state.players[actor_index].position = Some(target);
-            push_event(
-                state,
-                GameEvent::Moved {
-                    actor_id,
-                    from,
-                    to: target,
-                },
-            )?;
-            resolve_landing_terrain(state, actor_index, target)?;
+            complete_move_step(state, actor_index, from, target, direction)?;
         } else {
             eliminate_player(
                 state,
@@ -411,19 +414,34 @@ fn apply_move(
         return Ok(());
     }
 
-    state.players[actor_index].position = Some(target);
-    push_event(
-        state,
-        GameEvent::Moved {
-            actor_id,
-            from,
-            to: target,
-        },
-    )?;
-    resolve_landing_terrain(state, actor_index, target)
+    complete_move_step(state, actor_index, from, target, direction)
 }
 
-fn resolve_landing_terrain(
+fn complete_move_step(
+    state: &mut GameState,
+    actor_index: usize,
+    from: Position,
+    to: Position,
+    direction: Direction,
+) -> Result<(), CoreError> {
+    let actor_id = state.players[actor_index].id;
+    state.players[actor_index].position = Some(to);
+    push_event(state, GameEvent::Moved { actor_id, from, to })?;
+    resolve_landing_terrain(state, actor_index, to)?;
+    if state.terrain[map_index(to, state.map_size)?] == Terrain::Ice {
+        let ice_trigger = events::TriggerPoint::TerrainEntered {
+            actor_id,
+            from,
+            to,
+            terrain: Terrain::Ice,
+            direction,
+        };
+        events::EventTreePipeline::default().run(state, ice_trigger)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn resolve_landing_terrain(
     state: &mut GameState,
     actor_index: usize,
     position: Position,
@@ -528,12 +546,21 @@ fn apply_shot(
                     },
                 )?;
                 hit_something = true;
+                let impact_trigger = events::TriggerPoint::ProjectileImpact {
+                    shooter_id: actor_id,
+                    position: cursor,
+                    hit_terrain: Terrain::Crate,
+                    hit_player: None,
+                };
+                events::EventTreePipeline::default().run(state, impact_trigger)?;
                 break;
             }
             _ => {}
         }
 
-        if state.terrain[terrain_index] == Terrain::Water {
+        if state.terrain[terrain_index] == Terrain::Water
+            || state.terrain[terrain_index] == Terrain::Ice
+        {
             continue;
         }
         if let Some(target_index) = living_player_index_at(state, cursor, Some(actor_id)) {
@@ -637,6 +664,8 @@ fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
                     .round
                     .checked_add(1)
                     .ok_or(CoreError::InvalidState("round overflow"))?;
+                let round_trigger = events::TriggerPoint::RoundStart { round: state.round };
+                events::EventTreePipeline::default().run(state, round_trigger)?;
             }
             state.current_turn_index = candidate_index;
             append_record(
@@ -654,21 +683,24 @@ fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
     ))
 }
 
-fn push_event(state: &mut GameState, event: GameEvent) -> Result<(), CoreError> {
+pub(crate) fn push_event(state: &mut GameState, event: GameEvent) -> Result<u64, CoreError> {
     append_record(state, GameRecordContent::Event { event })
 }
 
-fn append_record(state: &mut GameState, content: GameRecordContent) -> Result<(), CoreError> {
+pub(crate) fn append_record(
+    state: &mut GameState,
+    content: GameRecordContent,
+) -> Result<u64, CoreError> {
     let sequence = state.next_record_sequence;
     state.next_record_sequence = state
         .next_record_sequence
         .checked_add(1)
         .ok_or(CoreError::InvalidState("record sequence overflow"))?;
     state.records.push(GameRecord { sequence, content });
-    Ok(())
+    Ok(sequence)
 }
 
-fn player_index(state: &GameState, player_id: PlayerId) -> Result<usize, CoreError> {
+pub(crate) fn player_index(state: &GameState, player_id: PlayerId) -> Result<usize, CoreError> {
     state
         .players
         .iter()
@@ -676,7 +708,7 @@ fn player_index(state: &GameState, player_id: PlayerId) -> Result<usize, CoreErr
         .ok_or(CoreError::UnknownPlayer(player_id))
 }
 
-fn living_player_index_at(
+pub(crate) fn living_player_index_at(
     state: &GameState,
     position: Position,
     excluded: Option<PlayerId>,
@@ -688,14 +720,14 @@ fn living_player_index_at(
     })
 }
 
-fn map_index(position: Position, map_size: u8) -> Result<usize, CoreError> {
+pub(crate) fn map_index(position: Position, map_size: u8) -> Result<usize, CoreError> {
     if position.x >= map_size || position.y >= map_size {
         return Err(CoreError::InvalidState("position lies outside the map"));
     }
     Ok(usize::from(position.y) * usize::from(map_size) + usize::from(position.x))
 }
 
-fn position_from_index(index: usize, map_size: u8) -> Result<Position, CoreError> {
+pub(crate) fn position_from_index(index: usize, map_size: u8) -> Result<Position, CoreError> {
     let size = usize::from(map_size);
     let x = u8::try_from(index % size)
         .map_err(|_| CoreError::InvalidState("x coordinate does not fit in u8"))?;
@@ -704,7 +736,11 @@ fn position_from_index(index: usize, map_size: u8) -> Result<Position, CoreError
     Ok(Position { x, y })
 }
 
-fn step_position(position: Position, direction: Direction, map_size: u8) -> Option<Position> {
+pub(crate) fn step_position(
+    position: Position,
+    direction: Direction,
+    map_size: u8,
+) -> Option<Position> {
     let (delta_x, delta_y) = match direction {
         Direction::Up => (0_i16, -1_i16),
         Direction::Down => (0, 1),
@@ -781,7 +817,7 @@ fn random_index(state: &mut u64, upper_bound: usize) -> Result<usize, CoreError>
         .map_err(|_| CoreError::InvalidState("random index does not fit in usize"))
 }
 
-fn next_random(state: &mut u64) -> u64 {
+pub(crate) fn next_random(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut value = *state;
     value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -953,5 +989,108 @@ mod tests {
                 .expect("second wait");
         }
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn event_pool_dampening_shifts_probabilities_toward_closure() {
+        use crate::events::{EventPool, PoolEntry};
+
+        let pool = EventPool::new(
+            "test_dampening",
+            vec![
+                PoolEntry::normal("evt_blast", 40),
+                PoolEntry::dampener("evt_settles", 10, 30),
+            ],
+        );
+
+        let mut rng_depth0 = 0x1234_5678;
+        let mut depth0_settles = 0;
+        let iterations = 1000;
+        for _ in 0..iterations {
+            if pool.roll(0, &mut rng_depth0).expect("roll").0 == "evt_settles" {
+                depth0_settles += 1;
+            }
+        }
+
+        let mut rng_depth4 = 0x1234_5678;
+        let mut depth4_settles = 0;
+        for _ in 0..iterations {
+            if pool.roll(4, &mut rng_depth4).expect("roll").0 == "evt_settles" {
+                depth4_settles += 1;
+            }
+        }
+
+        // At depth 0: eff_weight(blast) = 40, eff_weight(settles) = 10 -> ~20%
+        // At depth 4: eff_weight(blast) = 40 / 5 = 8, eff_weight(settles) = 10 + 120 = 130 -> 130/138 ~ 94%
+        assert!(depth0_settles < 300, "expected ~200, got {depth0_settles}");
+        assert!(depth4_settles > 850, "expected >850, got {depth4_settles}");
+    }
+
+    #[test]
+    fn event_pipeline_blizzard_freezes_water_to_ice() {
+        use crate::events::{EventTreePipeline, TriggerPoint};
+
+        let mut state = GameEngine::create_game(test_config(33)).expect("game");
+        let water_pos = Position { x: 1, y: 1 };
+        let water_idx = map_index(water_pos, state.map_size).expect("idx");
+        state.terrain[water_idx] = Terrain::Water;
+
+        // Force blizzard by directly calling the blizzard secondary trigger pipeline
+        let trigger = TriggerPoint::SecondaryTrigger {
+            tag: "freeze_waters".to_owned(),
+            actor_id: None,
+            position: None,
+        };
+        let outcome = EventTreePipeline::default()
+            .run(&mut state, trigger)
+            .expect("pipeline");
+
+        assert_eq!(outcome.events_resolved, 1);
+        assert_eq!(state.terrain[water_idx], Terrain::Ice);
+        assert!(state.records.iter().any(|r| matches!(
+            r,
+            GameRecord {
+                content: GameRecordContent::Event {
+                    event: GameEvent::TerrainChanged {
+                        from: Terrain::Water,
+                        to: Terrain::Ice,
+                        ..
+                    }
+                },
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn event_pipeline_ice_slide_moves_actor_forward() {
+        let mut state = GameEngine::create_game(test_config(44)).expect("game");
+        let p1 = state.players[0].id;
+        state.players[0].position = Some(Position { x: 0, y: 0 });
+
+        let ice_pos = Position { x: 0, y: 1 };
+        let ice_idx = map_index(ice_pos, state.map_size).expect("idx");
+        state.terrain[ice_idx] = Terrain::Ice;
+
+        let empty_pos = Position { x: 0, y: 2 };
+        let empty_idx = map_index(empty_pos, state.map_size).expect("idx");
+        state.terrain[empty_idx] = Terrain::Empty;
+
+        // Move down onto ice
+        GameEngine::apply_command(
+            &mut state,
+            p1,
+            PlayerCommand::Move {
+                direction: Direction::Down,
+            },
+        )
+        .expect("move down");
+
+        // The player should have landed on ice (0, 1), and if ice slide triggered, slid to (0, 2)
+        let final_pos = state.players[0].position.expect("pos");
+        assert!(
+            final_pos == Position { x: 0, y: 1 } || final_pos == Position { x: 0, y: 2 },
+            "player landed at unexpected position {final_pos:?}",
+        );
     }
 }

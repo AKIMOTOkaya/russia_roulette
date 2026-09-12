@@ -4,8 +4,8 @@
 
 | **Cargo 包** | **Rust crate 名** | **状态** | **职责** | **允许依赖** |
 |---------------|-------------------|----------|----------|--------------|
-| `roulette-domain` | `roulette_domain` | MVP 已实现 | 可序列化的 Tab/房间/成员/玩家 ID、房间视图、命令、事件、分类记录、通知、权威状态、随机流和 Web 视图。 | `serde`；不依赖运行时。 |
-| `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、玩家/Bot 行动与世界事件的分类记录、胜负和视图投影。 | `roulette-domain`。 |
+| `roulette-domain` | `roulette_domain` | MVP 已实现 | 可序列化的 Tab/房间/成员/玩家 ID、EventId、EventTier、Weather、冰面地形、房间视图、命令、分类记录、事件/戏剧化事件、通知、权威状态、随机流（含 events 独立随机流）和 Web 视图。 | `serde`；不依赖运行时。 |
+| `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、事件树 BFS 管线（`EventTreePipeline`）、事件定义索引库（`EventRegistry`）、动态阻尼收敛事件池（`EventPool`）、环境天气与冰面相变、胜负和视图投影。 | `roulette-domain`。 |
 | `roulette-host` | `roulette_host` | 本地多房间 MVP | 内存大厅、五位房间号、Tab 身份、房间密码、房主权限/转让、成员和 Bot 管理、活动超时、revision 校验及 Bot 调度。 | `roulette-core`、`roulette-domain`。 |
 | `roulette-backend` | 不作为库导出 | 本地 Web MVP | 多房间 HTTP API、嵌入 Web 资源、创始人临时认证、局域网访问软开关和进程生命周期。 | `roulette-host`、`roulette-domain`、Axum、Tokio。 |
 

@@ -34,11 +34,11 @@ const elements = Object.fromEntries([
   "founder-badge", "lan-toggle", "lan-description", "room-code", "room-title", "room-phase",
   "room-password", "leave-room", "member-count", "members", "add-bot", "start-room",
   "dissolve-room", "room-hint", "waiting-room", "game-workspace", "room-seed", "board",
-  "records", "turn-title", "revision", "solo-form", "toast",
+  "records", "turn-title", "revision", "weather-badge", "solo-form", "toast",
   "step-panel", "next-step", "step-hint", "controls-shortcut",
 ].map((id) => [id.replaceAll("-", "_"), document.getElementById(id)]));
 
-const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", high_ground: "△", mine: "◆", medkit: "✚" };
+const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", ice: "❄", high_ground: "△", mine: "◆", medkit: "✚" };
 let room = null;
 let roomId = sessionStorage.getItem("roulette_room_id");
 let mode = "move";
@@ -347,6 +347,9 @@ async function sendCommand(command) {
 function renderGame() {
   const game = room.game;
   elements.revision.textContent = `REV ${game.revision}`;
+  if (elements.weather_badge) {
+    elements.weather_badge.textContent = `天气：${weatherName(game.weather || "clear")}`;
+  }
   renderBoard(game);
   renderRecords(game);
   if (game.status.state === "finished") {
@@ -426,8 +429,10 @@ function eventText(event, name) {
     case "shot_missed": return `弹道结果 · ${name(event.actor_id)} 的子弹未命中目标`;
     case "shield_consumed": return `${name(event.player_id)} 的护盾挡下致命伤害`;
     case "player_eliminated": return `${name(event.player_id)} 出局（${causeName(event.cause)}）`;
-    case "terrain_changed": return `(${event.position.x}, ${event.position.y}) 的地形发生变化`;
+    case "terrain_changed": return `(${event.position.x}, ${event.position.y}) 的地形由 ${terrainName(event.from)} 变为 ${terrainName(event.to)}`;
     case "item_collected": return `${name(event.player_id)} 获得护盾`;
+    case "weather_changed": return `天气异变 · 环境由 ${weatherName(event.from)} 变为 ${weatherName(event.to)}`;
+    case "dramatic_event": return `[波次 ${event.wave}] ${event.title} · ${event.narrative}`;
     default: return event.type;
   }
 }
@@ -643,7 +648,8 @@ function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (character
 function phaseName(phase) { return ({ waiting: "等待中", playing: "对局中", finished: "已结束" })[phase] || phase; }
 function directionName(direction) { return ({ up: "上", down: "下", left: "左", right: "右" })[direction]; }
 function causeName(cause) { return ({ shot: "射击", elbow_duel: "肘击", mine: "地雷", drowned: "溺水", suicide: "主动结束" })[cause] || cause; }
-function terrainName(terrain) { return ({ empty: "空地", wall: "墙", crate: "木箱", water: "水域", high_ground: "高地", mine: "地雷", medkit: "护盾" })[terrain]; }
+function terrainName(terrain) { return ({ empty: "空地", wall: "墙", crate: "木箱", water: "水域", ice: "冰面", high_ground: "高地", mine: "地雷", medkit: "护盾" })[terrain] || terrain; }
+function weatherName(weather) { return ({ clear: "晴朗", blizzard: "暴雪", heatwave: "热浪", dense_fog: "浓雾" })[weather] || weather; }
 
 async function startClient() {
   await identityReady;
