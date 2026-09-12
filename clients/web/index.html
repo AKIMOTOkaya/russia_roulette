@@ -127,6 +127,10 @@
                 </div>
                 <aside class="controls">
                   <p class="section-number">03 / 行动</p>
+                  <div class="step-panel hidden" id="step-panel">
+                    <button class="primary next-step-btn" id="next-step" type="button">下一步</button>
+                    <p class="step-hint" id="step-hint">轮到机器人行动</p>
+                  </div>
                   <div class="mode-switch" role="group" aria-label="行动模式">
                     <button class="mode active" data-mode="move" type="button">移动</button>
                     <button class="mode" data-mode="shoot" type="button">射击</button>
@@ -141,7 +145,7 @@
                     <button class="secondary" data-command="wait" type="button">等待</button>
                     <button class="danger" data-command="suicide" type="button">结束自己</button>
                   </div>
-                  <p class="shortcut">方向键移动 · Shift + 方向键射击 · 空格等待</p>
+                  <p class="shortcut" id="controls-shortcut">方向键移动 · Shift + 方向键射击 · 空格等待</p>
                 </aside>
               </div>
             </section>

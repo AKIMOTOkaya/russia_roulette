@@ -35,6 +35,7 @@ const elements = Object.fromEntries([
   "room-password", "leave-room", "member-count", "members", "add-bot", "start-room",
   "dissolve-room", "room-hint", "waiting-room", "game-workspace", "room-seed", "board",
   "records", "turn-title", "revision", "solo-form", "toast",
+  "step-panel", "next-step", "step-hint", "controls-shortcut",
 ].map((id) => [id.replaceAll("-", "_"), document.getElementById(id)]));
 
 const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", high_ground: "△", mine: "◆", medkit: "✚" };
@@ -143,13 +144,22 @@ elements.dissolve_room.addEventListener("click", async () => {
   const lobby = await mutate(`/api/rooms/${encodeURIComponent(roomId)}/dissolve`, { tab_id: tabId });
   if (lobby) returnToLobby(lobby);
 });
+elements.next_step.addEventListener("click", triggerNextStep);
 
 document.querySelectorAll("[data-mode]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
 document.querySelectorAll("[data-direction]").forEach((button) => button.addEventListener("click", () => sendDirection(button.dataset.direction)));
 document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", () => sendCommand({ type: button.dataset.command })));
 
 document.addEventListener("keydown", (event) => {
-  if (event.target.matches("input, select") || !canAct()) return;
+  if (event.target.matches("input, select")) return;
+  if (canStepBot()) {
+    if (event.code === "Space" || event.key === "Enter") {
+      event.preventDefault();
+      triggerNextStep();
+      return;
+    }
+  }
+  if (!canAct()) return;
   const directions = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
   if (directions[event.key]) {
     event.preventDefault();
@@ -343,8 +353,16 @@ function renderGame() {
     const winner = game.players.find((player) => player.id === game.status.winner_id);
     elements.turn_title.textContent = winner ? `${winner.name} 获胜` : "无人幸存";
   } else {
-    const active = game.players.find((player) => player.id === game.current_player_id);
-    elements.turn_title.textContent = active?.id === game.human_player_id ? "轮到你行动" : `${active?.name || "玩家"} 行动中`;
+    const active = activePlayer();
+    if (active?.kind === "bot") {
+      elements.turn_title.textContent = room.is_owner
+        ? `${active.name} 行动中 · 点击下一步`
+        : `${active.name} 行动中 · 等待房主推进`;
+    } else {
+      elements.turn_title.textContent = active?.id === game.human_player_id
+        ? "轮到你行动"
+        : `${active?.name || "玩家"} 行动中`;
+    }
   }
   updateControls();
 }
@@ -426,14 +444,59 @@ function notificationText(notification, name) {
   return notification.type;
 }
 
+function activePlayer() {
+  const game = room?.game;
+  if (!game) return null;
+  return game.players.find((player) => player.id === game.current_player_id) || null;
+}
+
+function isBotTurn() {
+  const game = room?.game;
+  if (!game || game.status.state !== "running") return false;
+  const active = activePlayer();
+  return active?.kind === "bot";
+}
+
 function canAct() {
   const game = room?.game;
   return Boolean(game && !operationBusy && game.status.state === "running" && game.current_player_id === game.human_player_id);
 }
 
+function canStepBot() {
+  return Boolean(room && isBotTurn() && room.is_owner && !operationBusy);
+}
+
+async function triggerNextStep() {
+  if (!canStepBot()) return;
+  await roomMutation("step", { tab_id: tabId, expected_revision: room.game.revision });
+}
+
 function updateControls() {
-  const disabled = !canAct();
-  document.querySelectorAll(".controls button").forEach((button) => { button.disabled = disabled; });
+  const botTurn = isBotTurn();
+  const humanAct = canAct();
+
+  elements.step_panel.classList.toggle("hidden", !botTurn);
+  document.querySelectorAll(".mode-switch, .direction-pad, .minor-actions").forEach((node) => {
+    node.classList.toggle("hidden", botTurn);
+  });
+
+  if (botTurn) {
+    const active = activePlayer();
+    const botName = active?.name || "机器人";
+    elements.next_step.disabled = !canStepBot();
+    if (room.is_owner) {
+      elements.step_hint.textContent = `轮到 ${botName} 行动，房主可点击“下一步”或按空格/回车推进`;
+      elements.controls_shortcut.textContent = "空格 / 回车 / 点击推进机器人";
+    } else {
+      elements.step_hint.textContent = `轮到 ${botName} 行动，等待房主推进`;
+      elements.controls_shortcut.textContent = "等待房主推进机器人回合";
+    }
+  } else {
+    document.querySelectorAll(".controls button:not(.next-step-btn)").forEach((button) => {
+      button.disabled = !humanAct;
+    });
+    elements.controls_shortcut.textContent = "方向键移动 · Shift + 方向键射击 · 空格等待";
+  }
 }
 
 async function getJson(url, silent = false) {

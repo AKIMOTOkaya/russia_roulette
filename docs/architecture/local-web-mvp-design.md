@@ -107,6 +107,7 @@ Axum 应用组合入口持有一个 `Mutex<LocalLobby>`，把 `clients/web` 三�
 | `POST /api/rooms/{id}/start` | 房主以可选种子开局。 |
 | `POST /api/rooms/{id}/dissolve` | 房主解散房间。 |
 | `POST /api/rooms/{id}/command` | 当前真人提交 command + expected_revision。 |
+| `POST /api/rooms/{id}/step` | 房主推进当前机器人单步行动。 |
 | `POST /api/founder/auth` | 当前 Tab 验证创始人临时密码。 |
 | `GET/POST /api/server/settings` | 查看或由创始人修改局域网开关。 |
 

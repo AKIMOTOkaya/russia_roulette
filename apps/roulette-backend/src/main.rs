@@ -83,6 +83,12 @@ struct CommandRequest {
 }
 
 #[derive(Deserialize)]
+struct StepRequest {
+    tab_id: TabId,
+    expected_revision: u64,
+}
+
+#[derive(Deserialize)]
 struct FounderAuthRequest {
     tab_id: TabId,
     password: String,
@@ -134,7 +140,8 @@ impl ApiError {
             | HostError::RoomNotWaiting
             | HostError::InvalidMember
             | HostError::MatchNotRunning
-            | HostError::RevisionConflict { .. } => StatusCode::CONFLICT,
+            | HostError::RevisionConflict { .. }
+            | HostError::BotDoesNotOwnTurn => StatusCode::CONFLICT,
             HostError::AutomationLimitExceeded | HostError::Core(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -228,6 +235,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/rooms/{room_id}/start", post(start_room))
         .route("/api/rooms/{room_id}/dissolve", post(dissolve_room))
         .route("/api/rooms/{room_id}/command", post(command))
+        .route("/api/rooms/{room_id}/step", post(step))
         .route("/api/founder/auth", post(founder_auth))
         .route(
             "/api/server/settings",
@@ -434,6 +442,19 @@ async fn command(
             request.expected_revision,
             request.command,
         )
+        .map(Json)
+        .map_err(|error| ApiError::from_host(&error))
+}
+
+async fn step(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    Json(request): Json<StepRequest>,
+) -> Result<Json<RoomView>, ApiError> {
+    let mut lobby = lock_lobby(&state)?;
+    refresh_lobby(&mut lobby, &request.tab_id);
+    lobby
+        .step_bot(&room_id, &request.tab_id, request.expected_revision)
         .map(Json)
         .map_err(|error| ApiError::from_host(&error))
 }

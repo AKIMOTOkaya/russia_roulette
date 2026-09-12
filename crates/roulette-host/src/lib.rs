@@ -20,7 +20,6 @@ use roulette_domain::{
 
 const MIN_MEMBERS: usize = 3;
 const MAX_MEMBERS: usize = 6;
-const MAX_AUTOMATED_COMMANDS: usize = 4_096;
 const ROOM_CODE_LENGTH: usize = 5;
 const ROOM_CODE_ALPHABET: &[u8] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -84,6 +83,8 @@ pub enum HostError {
     },
     /// Browser attempted to act for another human or while a bot owned the turn.
     HumanDoesNotOwnTurn,
+    /// Automated step requested while a human owned the turn.
+    BotDoesNotOwnTurn,
     /// Automated play exceeded the safety budget.
     AutomationLimitExceeded,
     /// Deterministic Core rejected an operation.
@@ -110,6 +111,9 @@ impl Display for HostError {
             ),
             Self::HumanDoesNotOwnTurn => {
                 formatter.write_str("this tab does not own the current player turn")
+            }
+            Self::BotDoesNotOwnTurn => {
+                formatter.write_str("a bot does not own the current player turn")
             }
             Self::AutomationLimitExceeded => {
                 formatter.write_str("automated bot play exceeded its safety limit")
@@ -412,12 +416,12 @@ impl LocalLobby {
         room.view(tab_id)
     }
 
-    /// Applies one human command and automatically advances consecutive bots.
+    /// Applies one human command.
     ///
     /// # Errors
     ///
     /// Returns an error for invalid membership, phase, revision, turn ownership,
-    /// automated-play limits, or Core failures.
+    /// or Core failures.
     pub fn submit_command(
         &mut self,
         room_id: &str,
@@ -435,6 +439,37 @@ impl LocalLobby {
         }
         let game = room.game.as_mut().ok_or(HostError::MatchNotRunning)?;
         game.submit_human_command(tab_id, expected_revision, command)?;
+        if matches!(game.state.status, GameStatus::Finished { .. }) {
+            room.phase = RoomPhase::Finished;
+        }
+        room.view(tab_id)
+    }
+
+    /// Executes one turn for the current bot when requested by the room owner.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the requesting tab is not the room owner, the match
+    /// is not running, the revision conflicts, or a human owns the current turn.
+    pub fn step_bot(
+        &mut self,
+        room_id: &str,
+        tab_id: &TabId,
+        expected_revision: u64,
+    ) -> Result<RoomView, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let room = self.room_mut(&normalized)?;
+        if !room.has_tab(tab_id) {
+            return Err(HostError::NotRoomMember);
+        }
+        if !room.is_owner(tab_id) {
+            return Err(HostError::OwnerRequired);
+        }
+        if room.phase != RoomPhase::Playing {
+            return Err(HostError::MatchNotRunning);
+        }
+        let game = room.game.as_mut().ok_or(HostError::MatchNotRunning)?;
+        game.step_bot(expected_revision)?;
         if matches!(game.state.status, GameStatus::Finished { .. }) {
             room.phase = RoomPhase::Finished;
         }
@@ -709,7 +744,7 @@ impl HostedMatch {
             return Err(HostError::HumanDoesNotOwnTurn);
         }
         GameEngine::apply_command(&mut self.state, player_id, command)?;
-        self.advance_bots()
+        Ok(())
     }
 
     fn convert_human_to_bot(&mut self, tab_id: &TabId) {
@@ -729,28 +764,31 @@ impl HostedMatch {
         {
             player.kind = PlayerKind::Bot;
         }
-        let _ = self.advance_bots();
     }
 
-    fn advance_bots(&mut self) -> Result<(), HostError> {
-        for _ in 0..MAX_AUTOMATED_COMMANDS {
-            if !matches!(self.state.status, GameStatus::Running) {
-                return Ok(());
-            }
-            let actor_id = GameEngine::current_player_id(&self.state)?;
-            let actor = self
-                .state
-                .players
-                .iter()
-                .find(|player| player.id == actor_id)
-                .ok_or(HostError::Core(CoreError::UnknownPlayer(actor_id)))?;
-            if actor.kind == PlayerKind::Human {
-                return Ok(());
-            }
-            let command = GameEngine::choose_random_bot_command(&mut self.state, actor_id)?;
-            GameEngine::apply_command(&mut self.state, actor_id, command)?;
+    fn step_bot(&mut self, expected_revision: u64) -> Result<(), HostError> {
+        if expected_revision != self.state.revision {
+            return Err(HostError::RevisionConflict {
+                expected: self.state.revision,
+                actual: expected_revision,
+            });
         }
-        Err(HostError::AutomationLimitExceeded)
+        if !matches!(self.state.status, GameStatus::Running) {
+            return Err(HostError::MatchNotRunning);
+        }
+        let actor_id = GameEngine::current_player_id(&self.state)?;
+        let actor = self
+            .state
+            .players
+            .iter()
+            .find(|player| player.id == actor_id)
+            .ok_or(HostError::Core(CoreError::UnknownPlayer(actor_id)))?;
+        if actor.kind != PlayerKind::Bot {
+            return Err(HostError::BotDoesNotOwnTurn);
+        }
+        let command = GameEngine::choose_random_bot_command(&mut self.state, actor_id)?;
+        GameEngine::apply_command(&mut self.state, actor_id, command)?;
+        Ok(())
     }
 }
 
@@ -979,7 +1017,35 @@ mod tests {
         let after_guest = lobby
             .submit_command(&room.id.0, &guest, guest_revision, PlayerCommand::Wait)
             .expect("guest command");
-        assert!(after_guest.game.as_ref().expect("game").revision >= guest_revision + 2);
+        let bot_game = after_guest.game.as_ref().expect("game");
+        assert_eq!(bot_game.current_player_id, Some(PlayerId(3)));
+        assert_eq!(bot_game.revision, guest_revision + 1);
+
+        // Guest cannot step the bot (only owner can)
+        assert!(matches!(
+            lobby.step_bot(&room.id.0, &guest, bot_game.revision),
+            Err(HostError::OwnerRequired)
+        ));
+
+        // Owner cannot submit human command during bot turn
+        assert!(matches!(
+            lobby.submit_command(&room.id.0, &owner, bot_game.revision, PlayerCommand::Wait),
+            Err(HostError::HumanDoesNotOwnTurn)
+        ));
+
+        // Owner steps the bot
+        let after_bot = lobby
+            .step_bot(&room.id.0, &owner, bot_game.revision)
+            .expect("step bot");
+        let owner_turn_game = after_bot.game.as_ref().expect("game");
+        assert_eq!(owner_turn_game.current_player_id, Some(PlayerId(1)));
+        assert_eq!(owner_turn_game.revision, bot_game.revision + 1);
+
+        // Cannot step bot when it is a human's turn
+        assert!(matches!(
+            lobby.step_bot(&room.id.0, &owner, owner_turn_game.revision),
+            Err(HostError::BotDoesNotOwnTurn)
+        ));
     }
 
     #[test]
@@ -1015,5 +1081,41 @@ mod tests {
         let view = lobby.room_view(&room.id.0, &owner).expect("room survives");
         assert_eq!(view.members.len(), 1);
         assert!(view.is_owner);
+    }
+
+    #[test]
+    fn solo_mode_host_steps_each_bot_individually() {
+        let mut lobby = LocalLobby::new(42);
+        let owner = tab("solo-owner");
+        let room = create(&mut lobby, &owner, None);
+        lobby.add_bot(&room.id.0, &owner).expect("add bot 1");
+        lobby.add_bot(&room.id.0, &owner).expect("add bot 2");
+
+        let started = lobby.start_room(&room.id.0, &owner, 100).expect("start");
+        let rev0 = started.game.as_ref().expect("game").revision;
+
+        // Human turn (Player 1)
+        let after_human = lobby
+            .submit_command(&room.id.0, &owner, rev0, PlayerCommand::Wait)
+            .expect("human wait");
+        let g1 = after_human.game.as_ref().expect("game");
+        assert_eq!(g1.current_player_id, Some(PlayerId(2)));
+        assert_eq!(g1.revision, rev0 + 1);
+
+        // Step Bot 1 (Player 2)
+        let after_bot1 = lobby
+            .step_bot(&room.id.0, &owner, g1.revision)
+            .expect("step bot 1");
+        let g2 = after_bot1.game.as_ref().expect("game");
+        assert_eq!(g2.current_player_id, Some(PlayerId(3)));
+        assert_eq!(g2.revision, g1.revision + 1);
+
+        // Step Bot 2 (Player 3)
+        let after_bot2 = lobby
+            .step_bot(&room.id.0, &owner, g2.revision)
+            .expect("step bot 2");
+        let g3 = after_bot2.game.as_ref().expect("game");
+        assert_eq!(g3.current_player_id, Some(PlayerId(1)));
+        assert_eq!(g3.revision, g2.revision + 1);
     }
 }

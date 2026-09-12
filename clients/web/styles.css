@@ -215,6 +215,9 @@ input::placeholder { color: #555b5d; }
 .direction-pad button:nth-child(3) { grid-column: 2; grid-row: 2; }
 .direction-pad button:nth-child(4) { grid-column: 3; grid-row: 2; }
 .minor-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.step-panel { margin: 12px 0; text-align: center; }
+.next-step-btn { width: 100%; min-height: 44px; font-size: 0.82rem; font-weight: 700; letter-spacing: 0.08em; }
+.step-hint { margin: 10px 0 0; color: var(--muted); font-size: 0.62rem; line-height: 1.5; text-align: center; }
 .shortcut { margin: 10px 0 0; color: #686e70; font-size: 0.55rem; line-height: 1.5; text-align: center; }
 .records-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .records-heading h2 { margin: 6px 0 0; font-family: Georgia, "Songti SC", serif; font-size: 1.2rem; font-weight: 400; }
@@ -239,6 +242,8 @@ input::placeholder { color: #555b5d; }
   .board-stage { grid-template-columns: 1fr; }
   .controls { display: grid; grid-template-columns: 120px 125px 1fr; gap: 10px; align-items: center; }
   .controls > .section-number { display: none; }
+  .step-panel { grid-column: 1 / -1; margin: 0; }
+  .step-panel .next-step-btn { width: min(320px, 100%); margin: 0 auto; display: block; }
   .mode-switch, .direction-pad { margin: 0; }
   .shortcut { display: none; }
 }
@@ -281,6 +286,8 @@ input::placeholder { color: #555b5d; }
   .board { gap: 3px; }
   .controls { display: block; margin-top: 14px; }
   .controls > .section-number { display: block; text-align: center; }
+  .step-panel { width: min(260px, 100%); margin: 12px auto; }
+  .step-panel .next-step-btn { width: 100%; }
   .mode-switch { width: min(260px, 100%); margin: 12px auto 10px; }
   .direction-pad { margin: 0 auto 9px; }
   .minor-actions { width: min(260px, 100%); margin: 0 auto; }

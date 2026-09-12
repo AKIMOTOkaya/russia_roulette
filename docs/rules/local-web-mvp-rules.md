@@ -62,27 +62,35 @@ Bot 与真人在房间成员列表中使用同等席位展示，在对局中也�
 - 40%：随机方向射击；
 - 20%：等待。
 
-任一真人提交指令后，Host 会连续执行随后的 Bot 回合，直到轮到下一名真人或对局结束。机器人的选择属于“行动”，不是“事件”。
+轮到 Bot 行动时，对局暂停并由房主在界面上点击“下一步”（或使用快捷键）单步推进，每次点击执行当前 Bot 的单次回合，以便所有玩家看清机器人的具体动作与对局记录。机器人的选择属于“行动”，不是“事件”。
 
 ## 6. 一次操作的流程
 
 ```mermaid
 sequenceDiagram
+    participant Owner as 房主标签页
     participant Human as 当前真人标签页
     participant Web as Web 页面
     participant Host as 本地多房间 Host
     participant Core as 确定性 Core
 
-    Human->>Web: 移动/射击/等待/结束自己
-    Web->>Host: room + tab_id + command + expected_revision
-    Host->>Host: 校验成员与行动权
-    Host->>Core: 执行真人指令
-    loop 连续 Bot 回合
-        Host->>Core: 生成并执行 Bot 指令
+    alt 真人行动回合
+        Human->>Web: 移动/射击/等待/结束自己
+        Web->>Host: room + tab_id + command + expected_revision
+        Host->>Host: 校验成员与行动权
+        Host->>Core: 执行真人指令
+        Core-->>Host: 新状态 + 分类记录
+        Host-->>Web: 当前 Tab 对应的 RoomView
+        Web-->>Human: 成员、地图、记录与胜负
+    else 机器人行动回合
+        Owner->>Web: 点击“下一步” / 空格 / 回车
+        Web->>Host: room + tab_id + expected_revision (step)
+        Host->>Host: 校验房主权限与 Bot 回合
+        Host->>Core: 生成并执行当前 Bot 指令
+        Core-->>Host: 新状态 + 分类记录
+        Host-->>Web: 当前 Tab 对应的 RoomView
+        Web-->>Owner: 成员、地图、记录与胜负
     end
-    Core-->>Host: 新状态 + 分类记录
-    Host-->>Web: 当前 Tab 对应的 RoomView
-    Web-->>Human: 成员、地图、记录与胜负
 ```
 
 ## 7. 全局记录
