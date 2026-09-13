@@ -593,41 +593,212 @@ fn apply_crate_splinter_blast(state: &GameState, trigger: &TriggerPoint) -> Vec<
     secondary
 }
 
-fn apply_sudden_landmine(
+pub(crate) fn apply_sudden_landmine(
     state: &mut GameState,
     trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
 ) -> Result<String, CoreError> {
+    if let TriggerPoint::ActionIntent { actor_id, .. } = trigger {
+        outcome.action_canceled = true;
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let eliminated = crate::eliminate_player(
+            state,
+            actor_idx,
+            roulette_domain::EliminationCause::Mine,
+            None,
+            true,
+        )?;
+        if eliminated {
+            Ok(format!(
+                "暗雷轰然引爆！玩家 P{} 当场触雷被炸飞出局！",
+                actor_id.0
+            ))
+        } else {
+            Ok(format!(
+                "暗雷轰然引爆！玩家 P{} 的护盾抵御了爆炸冲击并破裂！",
+                actor_id.0
+            ))
+        }
+    } else {
+        Ok("隐蔽暗雷轰然引爆".to_string())
+    }
+}
+
+fn apply_wall_fatal_concussion(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
+) -> Result<String, CoreError> {
+    outcome.action_canceled = true;
+    if let TriggerPoint::ActionIntent { actor_id, .. } = trigger {
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let eliminated = crate::eliminate_player(
+            state,
+            actor_idx,
+            roulette_domain::EliminationCause::Collision,
+            None,
+            true,
+        )?;
+        if eliminated {
+            Ok(format!(
+                "玩家 P{} 全速撞击坚硬墙体，颅骨碎裂当场毙命！",
+                actor_id.0
+            ))
+        } else {
+            Ok(format!(
+                "玩家 P{} 猛烈撞击墙体，护盾吸收了致命冲击并破碎！",
+                actor_id.0
+            ))
+        }
+    } else {
+        Ok("全速撞击坚硬墙体，颅骨碎裂".to_string())
+    }
+}
+
+fn apply_wall_collapse_crush(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
+) -> Result<String, CoreError> {
+    outcome.action_canceled = true;
+    if let TriggerPoint::ActionIntent { actor_id, .. } = trigger {
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let eliminated = crate::eliminate_player(
+            state,
+            actor_idx,
+            roulette_domain::EliminationCause::Collision,
+            None,
+            true,
+        )?;
+        if eliminated {
+            Ok(format!(
+                "墙体承重坍塌，坠落的沉重巨石当场将玩家 P{} 砸毙！",
+                actor_id.0
+            ))
+        } else {
+            Ok(format!(
+                "沉重巨石砸落，玩家 P{} 的护盾承受了重击并破碎！",
+                actor_id.0
+            ))
+        }
+    } else {
+        Ok("墙体承重坍塌，沉重巨石砸落".to_string())
+    }
+}
+
+fn apply_wall_rebound_detonation(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
+) -> Result<String, CoreError> {
+    outcome.action_canceled = true;
+    if let TriggerPoint::ActionIntent { actor_id, .. } = trigger {
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let eliminated = crate::eliminate_player(
+            state,
+            actor_idx,
+            roulette_domain::EliminationCause::Mine,
+            None,
+            true,
+        )?;
+        if eliminated {
+            Ok(format!(
+                "玩家 P{} 撞墙失控后仰摔在隐蔽暗雷上，引爆当场身亡！",
+                actor_id.0
+            ))
+        } else {
+            Ok(format!(
+                "撞墙反弹触雷引爆，玩家 P{} 的护盾抵挡了爆炸冲击并破碎！",
+                actor_id.0
+            ))
+        }
+    } else {
+        Ok("撞墙反弹触雷引爆".to_string())
+    }
+}
+
+fn apply_wall_stun_survive(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
+) -> Result<String, CoreError> {
+    outcome.action_canceled = true;
     if let TriggerPoint::ActionIntent {
         actor_id,
         command: PlayerCommand::Move { direction },
     } = trigger
     {
         let actor_idx = crate::player_index(state, *actor_id)?;
-        let Some(pos) = state.players[actor_idx].position else {
-            return Ok("隐蔽暗雷引信被触发".to_string());
+        let pos = state.players[actor_idx].position;
+        let target = pos.and_then(|p| crate::step_position(p, *direction, state.map_size));
+        let reason = if target.is_none() {
+            roulette_domain::BlockReason::Boundary
+        } else {
+            roulette_domain::BlockReason::Wall
         };
-        let Some(target_pos) = crate::step_position(pos, *direction, state.map_size) else {
-            return Ok("隐蔽暗雷引信受阻".to_string());
-        };
-        let t_idx = crate::map_index(target_pos, state.map_size)?;
-        if state.terrain[t_idx] != Terrain::Wall {
-            let from = state.terrain[t_idx];
-            state.terrain[t_idx] = Terrain::Mine;
-            crate::push_event(
-                state,
-                GameEvent::TerrainChanged {
-                    position: target_pos,
-                    from,
-                    to: Terrain::Mine,
-                },
-            )?;
-            return Ok(format!(
-                "玩家 P{} 移动前方地表坍塌，赫然露出了触发式暗雷！",
-                actor_id.0
-            ));
-        }
+        crate::push_event(
+            state,
+            GameEvent::MoveBlocked {
+                actor_id: *actor_id,
+                reason,
+            },
+        )?;
+        Ok(format!(
+            "玩家 P{} 撞墙头晕目眩，但万幸没有伤及性命！",
+            actor_id.0
+        ))
+    } else {
+        Ok("撞墙头晕目眩，侥幸保住一命".to_string())
     }
-    Ok("隐蔽暗雷引信被触发".to_string())
+}
+
+fn apply_wall_breakthrough(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
+) -> Result<String, CoreError> {
+    outcome.action_canceled = true;
+    if let TriggerPoint::ActionIntent {
+        actor_id,
+        command: PlayerCommand::Move { direction },
+    } = trigger
+    {
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let from = state.players[actor_idx].position;
+        let target = from.and_then(|p| crate::step_position(p, *direction, state.map_size));
+        if let (Some(from_pos), Some(target_pos)) = (from, target) {
+            let t_idx = crate::map_index(target_pos, state.map_size)?;
+            if state.terrain[t_idx] == Terrain::Wall {
+                state.terrain[t_idx] = Terrain::Empty;
+                crate::push_event(
+                    state,
+                    GameEvent::TerrainChanged {
+                        position: target_pos,
+                        from: Terrain::Wall,
+                        to: Terrain::Empty,
+                    },
+                )?;
+                crate::complete_move_step(state, actor_idx, from_pos, target_pos, *direction)?;
+                return Ok(format!(
+                    "蛮力冲撞！玩家 P{} 竟硬生生撞塌了墙体并破墙冲入！",
+                    actor_id.0
+                ));
+            }
+        }
+        crate::push_event(
+            state,
+            GameEvent::MoveBlocked {
+                actor_id: *actor_id,
+                reason: roulette_domain::BlockReason::Boundary,
+            },
+        )?;
+        Ok(format!(
+            "玩家 P{} 猛烈冲撞边界，硬生生停下了脚步。",
+            actor_id.0
+        ))
+    } else {
+        Ok("蛮力冲撞撞塌了墙体".to_string())
+    }
 }
 
 fn apply_event_effect(
@@ -682,7 +853,27 @@ fn apply_event_effect(
             Ok((Vec::new(), desc))
         }
         "evt_sudden_landmine" => {
-            let desc = apply_sudden_landmine(state, trigger)?;
+            let desc = apply_sudden_landmine(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_wall_fatal_concussion" => {
+            let desc = apply_wall_fatal_concussion(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_wall_collapse_crush" => {
+            let desc = apply_wall_collapse_crush(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_wall_rebound_detonation" => {
+            let desc = apply_wall_rebound_detonation(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_wall_stun_survive" => {
+            let desc = apply_wall_stun_survive(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_wall_breakthrough" => {
+            let desc = apply_wall_breakthrough(state, trigger, outcome)?;
             Ok((Vec::new(), desc))
         }
         "evt_ice_slide" => apply_ice_slide(state, trigger),

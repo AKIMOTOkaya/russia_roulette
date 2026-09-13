@@ -1113,13 +1113,32 @@ mod tests {
         use crate::events::{TriggerPoint, resolve_pool};
 
         let state = GameEngine::create_game(test_config(77)).expect("game");
+        let pos = state.players[0].position.unwrap();
+        let free_dir = [
+            Direction::Down,
+            Direction::Right,
+            Direction::Left,
+            Direction::Up,
+        ]
+        .into_iter()
+        .find(|dir| {
+            if let Some(target) = crate::step_position(pos, *dir, state.map_size) {
+                let t_idx = crate::map_index(target, state.map_size).unwrap();
+                state.terrain[t_idx] != Terrain::Wall
+            } else {
+                false
+            }
+        })
+        .expect("free dir");
+
         let move_trigger = TriggerPoint::ActionIntent {
             actor_id: state.players[0].id,
             command: PlayerCommand::Move {
-                direction: Direction::Up,
+                direction: free_dir,
             },
         };
         let pool = resolve_pool(&move_trigger, &state).expect("pool");
+        assert_eq!(pool.name, "move_intent");
         let mut rng = 42;
         let (_, total_weight, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
 
@@ -1208,6 +1227,92 @@ mod tests {
 
         // Counter should immediately reset to 0
         assert_eq!(state.rounds_without_elimination, 0);
+    }
+
+    #[test]
+    fn test_wall_crash_pool_and_lethal_majority() {
+        use crate::events::{TriggerPoint, resolve_pool};
+
+        let state = GameEngine::create_game(test_config(77)).expect("game");
+        let pos = state.players[0].position.unwrap();
+        // Pick an obstructed direction (boundary or wall)
+        let blocked_dir = [
+            Direction::Up,
+            Direction::Left,
+            Direction::Down,
+            Direction::Right,
+        ]
+        .into_iter()
+        .find(|dir| {
+            let target = crate::step_position(pos, *dir, state.map_size);
+            target.is_none_or(|t| {
+                let t_idx = crate::map_index(t, state.map_size).unwrap();
+                state.terrain[t_idx] == Terrain::Wall
+            })
+        })
+        .expect("blocked dir");
+
+        let move_trigger = TriggerPoint::ActionIntent {
+            actor_id: state.players[0].id,
+            command: PlayerCommand::Move {
+                direction: blocked_dir,
+            },
+        };
+        let pool = resolve_pool(&move_trigger, &state).expect("pool");
+        assert_eq!(pool.name, "wall_crash");
+
+        let mut rng = 42;
+        let (_, total_weight, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
+        assert!(total_weight > 0);
+
+        // Sum lethal probabilities vs survival probabilities
+        let lethal_permille: u32 = candidates
+            .iter()
+            .filter(|c| c.is_lethal)
+            .map(|c| c.probability_permille)
+            .sum();
+        let survive_permille: u32 = candidates
+            .iter()
+            .filter(|c| !c.is_lethal)
+            .map(|c| c.probability_permille)
+            .sum();
+
+        // Lethal events should dominate (majority: >= 65%), with small survival probability (> 0% and <= 35%)
+        assert!(
+            lethal_permille >= 650,
+            "lethal events should dominate wall crash: {lethal_permille}"
+        );
+        assert!(
+            survive_permille > 0 && survive_permille <= 350,
+            "survival should be minor: {survive_permille}"
+        );
+    }
+
+    #[test]
+    fn test_sudden_landmine_eliminates_actor() {
+        use crate::events::TriggerPoint;
+
+        let mut state = GameEngine::create_game(test_config(88)).expect("game");
+        let actor_id = state.players[0].id;
+        let trigger = TriggerPoint::ActionIntent {
+            actor_id,
+            command: PlayerCommand::Move {
+                direction: Direction::Down,
+            },
+        };
+
+        // Run sudden landmine effect directly
+        let mut outcome = crate::events::PipelineOutcome::default();
+        let desc =
+            crate::events::pipeline::apply_sudden_landmine(&mut state, &trigger, &mut outcome)
+                .expect("mine");
+
+        assert!(
+            outcome.action_canceled,
+            "action should be canceled by mine explosion"
+        );
+        assert_eq!(state.players[0].status, PlayerStatus::Eliminated);
+        assert!(desc.contains("暗雷轰然引爆"));
     }
 
     #[test]

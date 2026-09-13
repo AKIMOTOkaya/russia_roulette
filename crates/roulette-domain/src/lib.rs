@@ -303,6 +303,8 @@ pub enum EliminationCause {
     Drowned,
     /// Chose the suicide action.
     Suicide,
+    /// Collided violently with a wall or obstacle.
+    Collision,
 }
 
 /// Structured facts emitted by the rules engine.

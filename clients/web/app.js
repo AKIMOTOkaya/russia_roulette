@@ -425,7 +425,8 @@ function renderBoard(game) {
 }
 
 function renderRecords(game) {
-  elements.records.replaceChildren(...game.records.map((record) => {
+  const records = [...game.records].reverse();
+  elements.records.replaceChildren(...records.map((record) => {
     const item = document.createElement("li");
     item.className = `record ${record.category}`;
     const badge = document.createElement("span");
@@ -812,7 +813,7 @@ function safeJson(response) { return response.json().catch(() => null); }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]); }
 function phaseName(phase) { return ({ waiting: "等待中", playing: "对局中", finished: "已结束" })[phase] || phase; }
 function directionName(direction) { return ({ up: "上", down: "下", left: "左", right: "右" })[direction]; }
-function causeName(cause) { return ({ shot: "射击", elbow_duel: "肘击", mine: "地雷", drowned: "溺水", suicide: "主动结束" })[cause] || cause; }
+function causeName(cause) { return ({ shot: "射击", elbow_duel: "肘击", mine: "地雷", drowned: "溺水", suicide: "主动结束", collision: "猛烈撞墙" })[cause] || cause; }
 function terrainName(terrain) { return ({ empty: "空地", wall: "墙", crate: "木箱", water: "水域", ice: "冰面", high_ground: "高地", mine: "地雷", medkit: "护盾" })[terrain] || terrain; }
 function weatherName(weather) { return ({ clear: "晴朗", blizzard: "暴雪", heatwave: "热浪", dense_fog: "浓雾" })[weather] || weather; }
 

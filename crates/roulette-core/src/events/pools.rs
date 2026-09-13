@@ -345,7 +345,7 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                 None
             }
         }
-        TriggerPoint::ActionIntent { command, .. } => match command {
+        TriggerPoint::ActionIntent { actor_id, command } => match command {
             PlayerCommand::Shoot { .. } => Some(EventPool::new(
                 "shoot_intent",
                 vec![
@@ -357,16 +357,43 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                     PoolEntry::dampener("evt_nothing_happens", 5, 45),
                 ],
             )),
-            PlayerCommand::Move { .. } => Some(EventPool::new(
-                "move_intent",
-                vec![
-                    PoolEntry::normal("evt_sprint_dash", 30),
-                    PoolEntry::normal("evt_spatial_swap", 15),
-                    PoolEntry::lethal("evt_sudden_landmine", 5, 18),
-                    PoolEntry::normal("evt_stumble_trip", 4),
-                    PoolEntry::dampener("evt_nothing_happens", 6, 45),
-                ],
-            )),
+            PlayerCommand::Move { direction } => {
+                let is_wall_or_boundary = crate::player_index(state, *actor_id)
+                    .ok()
+                    .and_then(|idx| {
+                        let pos = state.players[idx].position?;
+                        let target = crate::step_position(pos, *direction, state.map_size);
+                        Some(target.is_none_or(|t| {
+                            let t_idx = crate::map_index(t, state.map_size).unwrap_or(0);
+                            state.terrain[t_idx] == Terrain::Wall
+                        }))
+                    })
+                    .unwrap_or(false);
+
+                if is_wall_or_boundary {
+                    Some(EventPool::new(
+                        "wall_crash",
+                        vec![
+                            PoolEntry::lethal("evt_wall_fatal_concussion", 45, 20),
+                            PoolEntry::lethal("evt_wall_collapse_crush", 35, 15),
+                            PoolEntry::lethal("evt_wall_rebound_detonation", 20, 10),
+                            PoolEntry::dampener("evt_wall_stun_survive", 25, 40),
+                            PoolEntry::normal("evt_wall_breakthrough", 5),
+                        ],
+                    ))
+                } else {
+                    Some(EventPool::new(
+                        "move_intent",
+                        vec![
+                            PoolEntry::normal("evt_sprint_dash", 30),
+                            PoolEntry::normal("evt_spatial_swap", 15),
+                            PoolEntry::lethal("evt_sudden_landmine", 5, 18),
+                            PoolEntry::normal("evt_stumble_trip", 4),
+                            PoolEntry::dampener("evt_nothing_happens", 6, 45),
+                        ],
+                    ))
+                }
+            }
             _ => None,
         },
         TriggerPoint::TerrainEntered {
