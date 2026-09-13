@@ -73,6 +73,8 @@ pub struct CandidateTrace {
     pub probability_permille: u32,
     /// Whether this entry serves as a chain dampener.
     pub is_dampener: bool,
+    /// Whether this entry is lethal and scales up with rounds without elimination.
+    pub is_lethal: bool,
     /// Whether this candidate was selected by the roll.
     pub selected: bool,
 }
@@ -115,6 +117,8 @@ pub struct PipelineTrace {
     pub round: u32,
     /// Command revision during this execution.
     pub revision: u64,
+    /// Consecutive rounds without any player elimination during this execution.
+    pub stalemate_rounds: u32,
     /// Summary of the root trigger point.
     pub root_trigger_desc: String,
     /// All tree nodes executed in BFS wave order.
@@ -532,6 +536,8 @@ pub struct GameState {
     pub records: Vec<GameRecord>,
     /// Recent diagnostic traces of event pipeline tree resolutions.
     pub event_traces: Vec<PipelineTrace>,
+    /// Consecutive rounds without any player elimination (stalemate escalator).
+    pub rounds_without_elimination: u32,
 }
 
 /// Public map cell used by the Web client.
@@ -572,6 +578,8 @@ pub struct GameView {
     pub records: Vec<GameRecord>,
     /// Recent diagnostic traces of event pipeline tree resolutions.
     pub event_traces: Vec<PipelineTrace>,
+    /// Consecutive rounds without any player elimination (stalemate escalator).
+    pub rounds_without_elimination: u32,
 }
 
 /// Lifecycle phase of a local lobby room.

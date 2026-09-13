@@ -168,6 +168,7 @@ impl GameEngine {
                 },
             ],
             event_traces: Vec::new(),
+            rounds_without_elimination: 0,
         })
     }
 
@@ -231,7 +232,13 @@ impl GameEngine {
                     }
                 }
                 PlayerCommand::Shoot { direction } => {
-                    apply_shot(state, actor_index, direction, outcome.piercing_shot)?;
+                    apply_shot(
+                        state,
+                        actor_index,
+                        direction,
+                        outcome.piercing_shot,
+                        outcome.deadly_ricochet,
+                    )?;
                     if let Some(recoil_dir) = outcome.recoil_direction {
                         apply_recoil(state, actor_index, recoil_dir)?;
                     }
@@ -345,6 +352,7 @@ impl GameEngine {
             weather: state.weather,
             records: state.records[record_start..].to_vec(),
             event_traces: state.event_traces.clone(),
+            rounds_without_elimination: state.rounds_without_elimination,
         })
     }
 }
@@ -496,11 +504,13 @@ pub(crate) fn resolve_landing_terrain(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn apply_shot(
     state: &mut GameState,
     actor_index: usize,
     direction: Direction,
     piercing: bool,
+    ricochet: bool,
 ) -> Result<(), CoreError> {
     let actor_id = state.players[actor_index].id;
     state.players[actor_index].consecutive_shots = state.players[actor_index]
@@ -539,6 +549,7 @@ fn apply_shot(
     };
     let mut cursor = origin;
     let mut hit_something = false;
+    let mut hit_player = false;
 
     for _ in 0..range {
         let Some(next) = step_position(cursor, direction, state.map_size) else {
@@ -587,7 +598,34 @@ fn apply_shot(
                 true,
             )?;
             hit_something = true;
+            hit_player = true;
             break;
+        }
+    }
+
+    if ricochet && !hit_player {
+        let mut closest: Option<(usize, u32)> = None;
+        for (idx, p) in state.players.iter().enumerate() {
+            if idx == actor_index || p.status != PlayerStatus::Alive {
+                continue;
+            }
+            let Some(pos) = p.position else {
+                continue;
+            };
+            let dist = u32::from(pos.x.abs_diff(cursor.x) + pos.y.abs_diff(cursor.y));
+            if closest.as_ref().is_none_or(|(_, best)| dist < *best) {
+                closest = Some((idx, dist));
+            }
+        }
+        if let Some((target_index, _)) = closest {
+            eliminate_player(
+                state,
+                target_index,
+                EliminationCause::Shot,
+                Some(actor_id),
+                true,
+            )?;
+            hit_something = true;
         }
     }
 
@@ -662,6 +700,7 @@ fn eliminate_player(
     }
     state.players[player_index].status = PlayerStatus::Eliminated;
     state.players[player_index].position = None;
+    state.rounds_without_elimination = 0;
     push_event(
         state,
         GameEvent::PlayerEliminated {
@@ -705,6 +744,8 @@ fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
                     .round
                     .checked_add(1)
                     .ok_or(CoreError::InvalidState("round overflow"))?;
+                state.rounds_without_elimination =
+                    state.rounds_without_elimination.saturating_add(1);
                 let round_trigger = events::TriggerPoint::RoundStart { round: state.round };
                 events::EventTreePipeline::default().run(state, round_trigger)?;
             }
@@ -1048,7 +1089,7 @@ mod tests {
         let mut depth0_settles = 0;
         let iterations = 1000;
         for _ in 0..iterations {
-            if pool.roll(0, &mut rng_depth0).expect("roll").0 == "evt_settles" {
+            if pool.roll(0, 0, &mut rng_depth0).expect("roll").0 == "evt_settles" {
                 depth0_settles += 1;
             }
         }
@@ -1056,7 +1097,7 @@ mod tests {
         let mut rng_depth4 = 0x1234_5678;
         let mut depth4_settles = 0;
         for _ in 0..iterations {
-            if pool.roll(4, &mut rng_depth4).expect("roll").0 == "evt_settles" {
+            if pool.roll(4, 0, &mut rng_depth4).expect("roll").0 == "evt_settles" {
                 depth4_settles += 1;
             }
         }
@@ -1065,6 +1106,108 @@ mod tests {
         // At depth 4: eff_weight(blast) = 40 / 5 = 8, eff_weight(settles) = 10 + 120 = 130 -> 130/138 ~ 94%
         assert!(depth0_settles < 300, "expected ~200, got {depth0_settles}");
         assert!(depth4_settles > 850, "expected >850, got {depth4_settles}");
+    }
+
+    #[test]
+    fn test_low_depth_suppression_of_dampeners() {
+        use crate::events::{TriggerPoint, resolve_pool};
+
+        let state = GameEngine::create_game(test_config(77)).expect("game");
+        let move_trigger = TriggerPoint::ActionIntent {
+            actor_id: state.players[0].id,
+            command: PlayerCommand::Move {
+                direction: Direction::Up,
+            },
+        };
+        let pool = resolve_pool(&move_trigger, &state).expect("pool");
+        let mut rng = 42;
+        let (_, total_weight, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
+
+        // At depth 0, stalemate 0: dampener (nothing_happens) and stumble should be low
+        let nothing_cand = candidates
+            .iter()
+            .find(|c| c.event_id.0 == "evt_nothing_happens")
+            .expect("cand");
+        let stumble_cand = candidates
+            .iter()
+            .find(|c| c.event_id.0 == "evt_stumble_trip")
+            .expect("cand");
+
+        // nothing_happens (6/60 = 10%), stumble (4/60 = 6.6%)
+        assert!(
+            nothing_cand.probability_permille <= 120,
+            "nothing happens should be <= 12%, got {}",
+            nothing_cand.probability_permille
+        );
+        assert!(
+            stumble_cand.probability_permille <= 80,
+            "stumble should be <= 8%, got {}",
+            stumble_cand.probability_permille
+        );
+        assert!(total_weight > 0);
+    }
+
+    #[test]
+    fn test_stalemate_escalation_boosts_lethal_weights() {
+        use crate::events::{TriggerPoint, resolve_pool};
+
+        let state = GameEngine::create_game(test_config(88)).expect("game");
+        let round_trigger = TriggerPoint::RoundStart { round: 2 };
+        let pool = resolve_pool(&round_trigger, &state).expect("pool");
+
+        let mut rng = 123;
+        let (_, _, _, cands_peace0) = pool.roll_with_trace(0, 0, &mut rng);
+        let (_, _, _, cands_peace4) = pool.roll_with_trace(0, 4, &mut rng);
+
+        let meteor_peace0 = cands_peace0
+            .iter()
+            .find(|c| c.event_id.0 == "evt_meteor_strike")
+            .expect("meteor");
+        let meteor_peace4 = cands_peace4
+            .iter()
+            .find(|c| c.event_id.0 == "evt_meteor_strike")
+            .expect("meteor");
+
+        assert!(meteor_peace0.is_lethal);
+        assert!(meteor_peace4.is_lethal);
+
+        // Base 15 -> with stalemate 4: 15 + 4 * 25 = 115!
+        assert_eq!(meteor_peace0.effective_weight, 15);
+        assert_eq!(meteor_peace4.effective_weight, 115);
+        assert!(
+            meteor_peace4.probability_permille > meteor_peace0.probability_permille * 2,
+            "meteor probability should more than double in stalemate"
+        );
+    }
+
+    #[test]
+    fn test_elimination_resets_stalemate_counter() {
+        let mut state = GameEngine::create_game(test_config(66)).expect("game");
+        assert_eq!(state.rounds_without_elimination, 0);
+
+        // Advance turn past all living players to increment round
+        let turn_count = state.turn_order.len();
+        for _ in 0..turn_count {
+            let actor_id = state.players[state.current_turn_index].id;
+            GameEngine::apply_command(&mut state, actor_id, PlayerCommand::Wait).expect("wait");
+        }
+
+        assert_eq!(state.round, 2);
+        assert_eq!(state.rounds_without_elimination, 1);
+
+        // Eliminate player 1
+        let killer_id = state.players[1].id;
+        eliminate_player(
+            &mut state,
+            0,
+            EliminationCause::Shot,
+            Some(killer_id),
+            false,
+        )
+        .expect("elim");
+
+        // Counter should immediately reset to 0
+        assert_eq!(state.rounds_without_elimination, 0);
     }
 
     #[test]

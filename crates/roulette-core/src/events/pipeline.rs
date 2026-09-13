@@ -30,6 +30,7 @@ pub struct EventNode {
 
 /// Resulting modifications produced by the event pipeline run.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct PipelineOutcome {
     /// Command override if an `ActionIntent` event altered direction or behavior.
     pub override_command: Option<PlayerCommand>,
@@ -41,6 +42,8 @@ pub struct PipelineOutcome {
     pub recoil_direction: Option<Direction>,
     /// Whether this shot penetrates obstacles.
     pub piercing_shot: bool,
+    /// Whether this shot ricochets towards the nearest living target.
+    pub deadly_ricochet: bool,
     /// Whether this move triggers an extra sprint step.
     pub sprint_dash: bool,
 }
@@ -104,8 +107,11 @@ impl EventTreePipeline {
                     continue;
                 };
 
-                let (chosen, total_weight, roll_value, candidates) =
-                    pool.roll_with_trace(node.path_depth, &mut state.rng.events);
+                let (chosen, total_weight, roll_value, candidates) = pool.roll_with_trace(
+                    node.path_depth,
+                    state.rounds_without_elimination,
+                    &mut state.rng.events,
+                );
 
                 let Some(event_id) = chosen else {
                     continue;
@@ -209,6 +215,7 @@ impl EventTreePipeline {
                 id: trace_id,
                 round: state.round,
                 revision: state.revision,
+                stalemate_rounds: state.rounds_without_elimination,
                 root_trigger_desc: root_desc,
                 nodes: node_traces,
             };
@@ -586,6 +593,43 @@ fn apply_crate_splinter_blast(state: &GameState, trigger: &TriggerPoint) -> Vec<
     secondary
 }
 
+fn apply_sudden_landmine(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+) -> Result<String, CoreError> {
+    if let TriggerPoint::ActionIntent {
+        actor_id,
+        command: PlayerCommand::Move { direction },
+    } = trigger
+    {
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let Some(pos) = state.players[actor_idx].position else {
+            return Ok("隐蔽暗雷引信被触发".to_string());
+        };
+        let Some(target_pos) = crate::step_position(pos, *direction, state.map_size) else {
+            return Ok("隐蔽暗雷引信受阻".to_string());
+        };
+        let t_idx = crate::map_index(target_pos, state.map_size)?;
+        if state.terrain[t_idx] != Terrain::Wall {
+            let from = state.terrain[t_idx];
+            state.terrain[t_idx] = Terrain::Mine;
+            crate::push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position: target_pos,
+                    from,
+                    to: Terrain::Mine,
+                },
+            )?;
+            return Ok(format!(
+                "玩家 P{} 移动前方地表坍塌，赫然露出了触发式暗雷！",
+                actor_id.0
+            ));
+        }
+    }
+    Ok("隐蔽暗雷引信被触发".to_string())
+}
+
 fn apply_event_effect(
     state: &mut GameState,
     event_id: &str,
@@ -616,6 +660,13 @@ fn apply_event_effect(
                 "装填穿甲重弹，弹头将击碎并穿透木箱掩体".to_string(),
             ))
         }
+        "evt_ricochet_deadly" => {
+            outcome.deadly_ricochet = true;
+            Ok((
+                Vec::new(),
+                "致命跳弹附魔：子弹在偏折后将自动折射扑向最近存活玩家".to_string(),
+            ))
+        }
         "evt_sprint_dash" => {
             let desc = "脚步发力过猛骤然突进，移动距离额外增加一格".to_string();
             outcome.sprint_dash = true;
@@ -628,6 +679,10 @@ fn apply_event_effect(
         }
         "evt_spatial_swap" => {
             let desc = apply_spatial_swap(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_sudden_landmine" => {
+            let desc = apply_sudden_landmine(state, trigger)?;
             Ok((Vec::new(), desc))
         }
         "evt_ice_slide" => apply_ice_slide(state, trigger),

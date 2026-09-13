@@ -154,6 +154,10 @@ pub struct PoolEntry {
     pub is_dampener: bool,
     /// Growth rate of weight per unit of branch path depth when `is_dampener` is true.
     pub dampening_growth: u32,
+    /// Whether this event can inflict lethal or catastrophic damage/elimination.
+    pub is_lethal: bool,
+    /// Escalation growth per round without elimination when `is_lethal` is true.
+    pub lethality_growth: u32,
 }
 
 impl PoolEntry {
@@ -165,6 +169,8 @@ impl PoolEntry {
             base_weight,
             is_dampener: false,
             dampening_growth: 0,
+            is_lethal: false,
+            lethality_growth: 0,
         }
     }
 
@@ -176,6 +182,21 @@ impl PoolEntry {
             base_weight,
             is_dampener: true,
             dampening_growth,
+            is_lethal: false,
+            lethality_growth: 0,
+        }
+    }
+
+    /// Creates a lethal (escalating/convergent on stalemate) pool entry.
+    #[must_use]
+    pub fn lethal(event_id: &'static str, base_weight: u32, lethality_growth: u32) -> Self {
+        Self {
+            event_id: EventId::new(event_id),
+            base_weight,
+            is_dampener: false,
+            dampening_growth: 0,
+            is_lethal: true,
+            lethality_growth,
         }
     }
 }
@@ -201,21 +222,26 @@ impl EventPool {
     pub fn roll_with_trace(
         &self,
         depth: u32,
+        stalemate_rounds: u32,
         rng_stream: &mut u64,
     ) -> (Option<EventId>, u64, u64, Vec<CandidateTrace>) {
         let mut total_weight: u64 = 0;
         let mut weighted_entries = Vec::with_capacity(self.entries.len());
+        let depth_u64 = u64::from(depth);
+        let stalemate_u64 = u64::from(stalemate_rounds);
 
         for entry in &self.entries {
             let eff_weight = if entry.is_dampener {
-                u64::from(
-                    entry
-                        .base_weight
-                        .saturating_add(depth.saturating_mul(entry.dampening_growth)),
-                )
+                u64::from(entry.base_weight)
+                    .saturating_add(depth_u64.saturating_mul(u64::from(entry.dampening_growth)))
             } else {
-                let divisor = u64::from(1 + depth);
-                (u64::from(entry.base_weight) / divisor).max(1)
+                let base_with_stalemate =
+                    u64::from(entry.base_weight).saturating_add(if entry.is_lethal {
+                        stalemate_u64.saturating_mul(u64::from(entry.lethality_growth))
+                    } else {
+                        0
+                    });
+                (base_with_stalemate / (1 + depth_u64)).max(1)
             };
             total_weight = total_weight.saturating_add(eff_weight);
             weighted_entries.push((entry, eff_weight));
@@ -257,6 +283,7 @@ impl EventPool {
                     effective_weight: eff_weight,
                     probability_permille,
                     is_dampener: entry.is_dampener,
+                    is_lethal: entry.is_lethal,
                     selected,
                 }
             })
@@ -265,10 +292,10 @@ impl EventPool {
         (chosen, total_weight, roll, candidates)
     }
 
-    /// Selects an event from the pool using the branch path depth and the events random stream.
+    /// Selects an event from the pool using branch depth, stalemate rounds, and events random stream.
     #[must_use]
-    pub fn roll(&self, depth: u32, rng_stream: &mut u64) -> Option<EventId> {
-        self.roll_with_trace(depth, rng_stream).0
+    pub fn roll(&self, depth: u32, stalemate_rounds: u32, rng_stream: &mut u64) -> Option<EventId> {
+        self.roll_with_trace(depth, stalemate_rounds, rng_stream).0
     }
 }
 
@@ -283,31 +310,34 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                     Weather::Clear => Some(EventPool::new(
                         "ambient_round_weather_clear",
                         vec![
+                            PoolEntry::lethal("evt_meteor_strike", 15, 25),
                             PoolEntry::normal("evt_weather_blizzard", 25),
                             PoolEntry::normal("evt_weather_heatwave", 20),
-                            PoolEntry::normal("evt_meteor_strike", 15),
-                            PoolEntry::dampener("evt_nothing_happens", 40, 50),
+                            PoolEntry::dampener("evt_nothing_happens", 8, 45),
                         ],
                     )),
                     Weather::Blizzard => Some(EventPool::new(
                         "ambient_round_weather_blizzard",
                         vec![
-                            PoolEntry::normal("evt_weather_heatwave", 40),
-                            PoolEntry::dampener("evt_nothing_happens", 60, 50),
+                            PoolEntry::lethal("evt_meteor_strike", 15, 25),
+                            PoolEntry::normal("evt_weather_heatwave", 35),
+                            PoolEntry::dampener("evt_nothing_happens", 10, 45),
                         ],
                     )),
                     Weather::Heatwave => Some(EventPool::new(
                         "ambient_round_weather_heatwave",
                         vec![
-                            PoolEntry::normal("evt_weather_blizzard", 35),
-                            PoolEntry::dampener("evt_nothing_happens", 65, 50),
+                            PoolEntry::lethal("evt_meteor_strike", 15, 25),
+                            PoolEntry::normal("evt_weather_blizzard", 30),
+                            PoolEntry::dampener("evt_nothing_happens", 10, 45),
                         ],
                     )),
                     Weather::DenseFog => Some(EventPool::new(
                         "ambient_round_weather_fog",
                         vec![
-                            PoolEntry::normal("evt_weather_blizzard", 30),
-                            PoolEntry::dampener("evt_nothing_happens", 70, 50),
+                            PoolEntry::lethal("evt_meteor_strike", 15, 25),
+                            PoolEntry::normal("evt_weather_blizzard", 25),
+                            PoolEntry::dampener("evt_nothing_happens", 10, 45),
                         ],
                     )),
                 }
@@ -321,18 +351,20 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                 vec![
                     PoolEntry::normal("evt_recoil_knockback", 25),
                     PoolEntry::normal("evt_disoriented_reverse_shot", 20),
-                    PoolEntry::normal("evt_piercing_slug", 15),
-                    PoolEntry::dampener("evt_revolver_misfire", 10, 20),
-                    PoolEntry::dampener("evt_nothing_happens", 30, 40),
+                    PoolEntry::lethal("evt_piercing_slug", 15, 18),
+                    PoolEntry::lethal("evt_ricochet_deadly", 10, 22),
+                    PoolEntry::dampener("evt_revolver_misfire", 5, 25),
+                    PoolEntry::dampener("evt_nothing_happens", 5, 45),
                 ],
             )),
             PlayerCommand::Move { .. } => Some(EventPool::new(
                 "move_intent",
                 vec![
-                    PoolEntry::normal("evt_sprint_dash", 25),
-                    PoolEntry::normal("evt_stumble_trip", 15),
-                    PoolEntry::normal("evt_spatial_swap", 10),
-                    PoolEntry::dampener("evt_nothing_happens", 50, 50),
+                    PoolEntry::normal("evt_sprint_dash", 30),
+                    PoolEntry::normal("evt_spatial_swap", 15),
+                    PoolEntry::lethal("evt_sudden_landmine", 5, 18),
+                    PoolEntry::normal("evt_stumble_trip", 4),
+                    PoolEntry::dampener("evt_nothing_happens", 6, 45),
                 ],
             )),
             _ => None,
@@ -344,8 +376,8 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
             "ice_terrain_impact",
             vec![
                 PoolEntry::normal("evt_ice_slide", 50),
-                PoolEntry::normal("evt_ice_crack_collapse", 25),
-                PoolEntry::dampener("evt_dust_settles", 25, 40),
+                PoolEntry::lethal("evt_ice_crack_collapse", 25, 15),
+                PoolEntry::dampener("evt_dust_settles", 10, 40),
             ],
         )),
         TriggerPoint::ProjectileImpact {
@@ -354,10 +386,10 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
         } => Some(EventPool::new(
             "crate_impact",
             vec![
-                PoolEntry::normal("evt_crate_surprise_mine", 30),
+                PoolEntry::lethal("evt_crate_surprise_mine", 25, 20),
                 PoolEntry::normal("evt_crate_splinter_blast", 30),
                 PoolEntry::normal("evt_crate_surprise_medkit", 20),
-                PoolEntry::dampener("evt_dust_settles", 20, 40),
+                PoolEntry::dampener("evt_dust_settles", 10, 40),
             ],
         )),
         TriggerPoint::SecondaryTrigger { tag, .. } => match tag.as_str() {

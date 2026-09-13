@@ -34,7 +34,7 @@ const elements = Object.fromEntries([
   "founder-badge", "lan-toggle", "lan-description", "room-code", "room-title", "room-phase",
   "room-password", "leave-room", "member-count", "members", "add-bot", "start-room",
   "dissolve-room", "room-hint", "waiting-room", "game-workspace", "room-seed", "board",
-  "records", "turn-title", "revision", "weather-badge", "solo-form", "toast",
+  "records", "turn-title", "revision", "weather-badge", "stalemate-badge", "solo-form", "toast",
   "step-panel", "next-step", "step-hint", "controls-shortcut",
   "header-open-event-debug", "open-event-debug", "event-debug-modal",
   "event-debug-content", "debug-trace-count", "refresh-debug-view",
@@ -370,6 +370,15 @@ function renderGame() {
   if (elements.weather_badge) {
     elements.weather_badge.textContent = `天气：${weatherName(game.weather || "clear")}`;
   }
+  if (elements.stalemate_badge) {
+    const stalemateRounds = game.rounds_without_elimination || 0;
+    if (stalemateRounds > 0) {
+      elements.stalemate_badge.textContent = `🔥 僵局第 ${stalemateRounds} 轮 (致死率提升)`;
+      elements.stalemate_badge.classList.remove("hidden");
+    } else {
+      elements.stalemate_badge.classList.add("hidden");
+    }
+  }
   renderBoard(game);
   renderRecords(game);
   if (game.status.state === "finished") {
@@ -685,7 +694,7 @@ function buildTraceCard(trace) {
       <span class="trace-root-trigger">${escapeHtml(trace.root_trigger_desc)}</span>
     </div>
     <div class="trace-meta-info">
-      第 ${trace.round} 轮 · Rev ${trace.revision} · ${trace.nodes.length} 个树节点
+      第 ${trace.round} 轮 · ${trace.stalemate_rounds > 0 ? `<strong style="color: #ff7865;">🔥 僵局第 ${trace.stalemate_rounds} 轮</strong> · ` : ""}Rev ${trace.revision} · ${trace.nodes.length} 个树节点
     </div>
   `;
 
@@ -738,6 +747,7 @@ function buildTraceCard(trace) {
             <span class="candidate-name" title="${escapeHtml(cand.title)} (${escapeHtml(cand.event_id)})">
               ${escapeHtml(cand.title)}
               ${cand.is_dampener ? '<span class="candidate-dampener-badge">[阻尼]</span>' : ""}
+              ${cand.is_lethal ? '<span class="candidate-lethal-badge">[致死]</span>' : ""}
             </span>
           </div>
           <span class="candidate-pct">${pct}%</span>

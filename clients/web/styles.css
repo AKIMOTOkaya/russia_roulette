@@ -169,6 +169,7 @@ input::placeholder { color: #555b5d; }
 .candidate-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.63rem; }
 .candidate-row.selected .candidate-name { color: #fff; font-weight: 700; }
 .candidate-dampener-badge { font-size: 0.54rem; color: #bca068; }
+.candidate-lethal-badge { font-size: 0.54rem; color: #ff7865; font-weight: 700; margin-left: 2px; }
 .candidate-pct { font-weight: 700; color: #8e9699; font-size: 0.62rem; }
 .candidate-row.selected .candidate-pct { color: var(--accent-soft); }
 .candidate-bar-cell { display: flex; align-items: center; gap: 6px; }
@@ -243,7 +244,8 @@ input::placeholder { color: #555b5d; }
 .board-wrap, .records { padding: 20px; }
 .board-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
 .board-heading h2 { margin: 7px 0 0; font-family: Georgia, "Songti SC", serif; font-size: 1.45rem; font-weight: 400; }
-.board-meta { display: flex; align-items: center; gap: 8px; }
+.board-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stalemate-badge { border: 1px solid #7c3a2f; padding: 7px 10px; color: #ff7865; font-family: ui-monospace, monospace; font-size: 0.64rem; background: #2b1714; font-weight: 700; }
 .weather-badge { border: 1px solid var(--line); padding: 7px 10px; color: var(--gold); font-family: ui-monospace, monospace; font-size: 0.64rem; background: #202628; }
 .revision { border: 1px solid var(--line); padding: 7px 10px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.64rem; }
 .board-stage { display: grid; grid-template-columns: minmax(350px, 1fr) 160px; gap: 14px; align-items: center; }
