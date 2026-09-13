@@ -1,7 +1,8 @@
 //! Contextual event pools and trigger points.
 
 use roulette_domain::{
-    Direction, EventId, GameState, PlayerCommand, PlayerId, Position, Terrain, Weather,
+    CandidateTrace, Direction, EventId, GameState, PlayerCommand, PlayerId, Position, Terrain,
+    Weather,
 };
 
 /// Trigger point providing contextual data to the event system.
@@ -84,6 +85,62 @@ impl TriggerPoint {
             _ => None,
         }
     }
+
+    /// Human-readable diagnostic description of this trigger.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::RoundStart { round } => format!("大回合开始 (第 {round} 轮)"),
+            Self::TurnStart { player_id } => format!("玩家 P{} 回合开始", player_id.0),
+            Self::ActionIntent { actor_id, command } => match command {
+                PlayerCommand::Move { direction } => {
+                    format!("玩家 P{} 意图向 {:?} 移动", actor_id.0, direction)
+                }
+                PlayerCommand::Shoot { direction } => {
+                    format!("玩家 P{} 意图向 {:?} 射击", actor_id.0, direction)
+                }
+                PlayerCommand::Wait => format!("玩家 P{} 意图等待", actor_id.0),
+                PlayerCommand::Suicide => format!("玩家 P{} 意图自裁", actor_id.0),
+            },
+            Self::TerrainEntered {
+                actor_id,
+                to,
+                terrain,
+                ..
+            } => {
+                format!(
+                    "玩家 P{} 踏入 {:?} ({}, {})",
+                    actor_id.0, terrain, to.x, to.y
+                )
+            }
+            Self::ProjectileImpact {
+                shooter_id,
+                position,
+                hit_terrain,
+                ..
+            } => {
+                format!(
+                    "玩家 P{} 子弹击中 {:?} ({}, {})",
+                    shooter_id.0, hit_terrain, position.x, position.y
+                )
+            }
+            Self::SecondaryTrigger {
+                tag,
+                actor_id,
+                position,
+            } => {
+                use std::fmt::Write;
+                let mut s = format!("次生波连锁 [{tag}]");
+                if let Some(id) = actor_id {
+                    let _ = write!(s, " 涉及 P{}", id.0);
+                }
+                if let Some(pos) = position {
+                    let _ = write!(s, " 坐标 ({}, {})", pos.x, pos.y);
+                }
+                s
+            }
+        }
+    }
 }
 
 /// One candidate entry within an event pool.
@@ -139,9 +196,13 @@ impl EventPool {
         Self { name, entries }
     }
 
-    /// Selects an event from the pool using the branch path depth and the events random stream.
+    /// Selects an event and returns full diagnostic candidate traces, total weight, and roll value.
     #[must_use]
-    pub fn roll(&self, depth: u32, rng_stream: &mut u64) -> Option<EventId> {
+    pub fn roll_with_trace(
+        &self,
+        depth: u32,
+        rng_stream: &mut u64,
+    ) -> (Option<EventId>, u64, u64, Vec<CandidateTrace>) {
         let mut total_weight: u64 = 0;
         let mut weighted_entries = Vec::with_capacity(self.entries.len());
 
@@ -161,58 +222,130 @@ impl EventPool {
         }
 
         if total_weight == 0 {
-            return None;
+            return (None, 0, 0, Vec::new());
         }
 
         let roll = crate::next_random(rng_stream) % total_weight;
         let mut accumulator: u64 = 0;
-        for (entry, weight) in weighted_entries {
-            accumulator = accumulator.saturating_add(weight);
-            if roll < accumulator {
-                return Some(entry.event_id.clone());
+        let mut chosen: Option<EventId> = None;
+
+        for (entry, weight) in &weighted_entries {
+            accumulator = accumulator.saturating_add(*weight);
+            if chosen.is_none() && roll < accumulator {
+                chosen = Some(entry.event_id.clone());
             }
         }
+        if chosen.is_none() {
+            chosen = self.entries.last().map(|e| e.event_id.clone());
+        }
 
-        self.entries.last().map(|e| e.event_id.clone())
+        let candidates = weighted_entries
+            .into_iter()
+            .map(|(entry, eff_weight)| {
+                let title = crate::events::catalog::EventRegistry::get(&entry.event_id)
+                    .map_or_else(|| entry.event_id.0.clone(), |d| d.title.to_owned());
+                let probability_permille = eff_weight
+                    .saturating_mul(1000)
+                    .checked_div(total_weight)
+                    .and_then(|v| u32::try_from(v).ok())
+                    .unwrap_or(0);
+                let selected = chosen.as_ref() == Some(&entry.event_id);
+                CandidateTrace {
+                    event_id: entry.event_id.clone(),
+                    title,
+                    base_weight: entry.base_weight,
+                    effective_weight: eff_weight,
+                    probability_permille,
+                    is_dampener: entry.is_dampener,
+                    selected,
+                }
+            })
+            .collect();
+
+        (chosen, total_weight, roll, candidates)
+    }
+
+    /// Selects an event from the pool using the branch path depth and the events random stream.
+    #[must_use]
+    pub fn roll(&self, depth: u32, rng_stream: &mut u64) -> Option<EventId> {
+        self.roll_with_trace(depth, rng_stream).0
     }
 }
 
 /// Resolves the contextual event pool matching a given trigger point and game state.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPool> {
     match trigger {
         TriggerPoint::RoundStart { round } => {
-            // After round 1, ambient weather shifts may occur if currently Clear
-            if *round >= 2 && state.weather == Weather::Clear {
-                Some(EventPool::new(
-                    "ambient_round_weather",
-                    vec![
-                        PoolEntry::normal("evt_weather_blizzard", 25),
-                        PoolEntry::dampener("evt_nothing_happens", 75, 40),
-                    ],
-                ))
+            if *round >= 2 {
+                match state.weather {
+                    Weather::Clear => Some(EventPool::new(
+                        "ambient_round_weather_clear",
+                        vec![
+                            PoolEntry::normal("evt_weather_blizzard", 25),
+                            PoolEntry::normal("evt_weather_heatwave", 20),
+                            PoolEntry::normal("evt_meteor_strike", 15),
+                            PoolEntry::dampener("evt_nothing_happens", 40, 50),
+                        ],
+                    )),
+                    Weather::Blizzard => Some(EventPool::new(
+                        "ambient_round_weather_blizzard",
+                        vec![
+                            PoolEntry::normal("evt_weather_heatwave", 40),
+                            PoolEntry::dampener("evt_nothing_happens", 60, 50),
+                        ],
+                    )),
+                    Weather::Heatwave => Some(EventPool::new(
+                        "ambient_round_weather_heatwave",
+                        vec![
+                            PoolEntry::normal("evt_weather_blizzard", 35),
+                            PoolEntry::dampener("evt_nothing_happens", 65, 50),
+                        ],
+                    )),
+                    Weather::DenseFog => Some(EventPool::new(
+                        "ambient_round_weather_fog",
+                        vec![
+                            PoolEntry::normal("evt_weather_blizzard", 30),
+                            PoolEntry::dampener("evt_nothing_happens", 70, 50),
+                        ],
+                    )),
+                }
             } else {
                 None
             }
         }
-        TriggerPoint::ActionIntent {
-            command: PlayerCommand::Shoot { .. },
-            ..
-        } => Some(EventPool::new(
-            "shoot_intent",
-            vec![
-                PoolEntry::normal("evt_disoriented_reverse_shot", 15),
-                PoolEntry::dampener("evt_nothing_happens", 85, 40),
-            ],
-        )),
+        TriggerPoint::ActionIntent { command, .. } => match command {
+            PlayerCommand::Shoot { .. } => Some(EventPool::new(
+                "shoot_intent",
+                vec![
+                    PoolEntry::normal("evt_recoil_knockback", 25),
+                    PoolEntry::normal("evt_disoriented_reverse_shot", 20),
+                    PoolEntry::normal("evt_piercing_slug", 15),
+                    PoolEntry::dampener("evt_revolver_misfire", 10, 20),
+                    PoolEntry::dampener("evt_nothing_happens", 30, 40),
+                ],
+            )),
+            PlayerCommand::Move { .. } => Some(EventPool::new(
+                "move_intent",
+                vec![
+                    PoolEntry::normal("evt_sprint_dash", 25),
+                    PoolEntry::normal("evt_stumble_trip", 15),
+                    PoolEntry::normal("evt_spatial_swap", 10),
+                    PoolEntry::dampener("evt_nothing_happens", 50, 50),
+                ],
+            )),
+            _ => None,
+        },
         TriggerPoint::TerrainEntered {
             terrain: Terrain::Ice,
             ..
         } => Some(EventPool::new(
             "ice_terrain_impact",
             vec![
-                PoolEntry::normal("evt_ice_slide", 70),
-                PoolEntry::dampener("evt_dust_settles", 30, 40),
+                PoolEntry::normal("evt_ice_slide", 50),
+                PoolEntry::normal("evt_ice_crack_collapse", 25),
+                PoolEntry::dampener("evt_dust_settles", 25, 40),
             ],
         )),
         TriggerPoint::ProjectileImpact {
@@ -221,17 +354,20 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
         } => Some(EventPool::new(
             "crate_impact",
             vec![
-                PoolEntry::normal("evt_crate_splinter_blast", 70),
-                PoolEntry::dampener("evt_dust_settles", 30, 40),
+                PoolEntry::normal("evt_crate_surprise_mine", 30),
+                PoolEntry::normal("evt_crate_splinter_blast", 30),
+                PoolEntry::normal("evt_crate_surprise_medkit", 20),
+                PoolEntry::dampener("evt_dust_settles", 20, 40),
             ],
         )),
         TriggerPoint::SecondaryTrigger { tag, .. } => match tag.as_str() {
             "freeze_waters" => Some(EventPool::new(
                 "freeze_waters",
-                vec![
-                    // Guaranteed deterministic response (no nothing-happens)
-                    PoolEntry::dampener("evt_water_freeze_ice", 100, 0),
-                ],
+                vec![PoolEntry::dampener("evt_water_freeze_ice", 100, 0)],
+            )),
+            "melt_ices" => Some(EventPool::new(
+                "melt_ices",
+                vec![PoolEntry::dampener("evt_weather_heatwave", 100, 0)],
             )),
             "crate_blast" => Some(EventPool::new(
                 "splinter_shockwave",

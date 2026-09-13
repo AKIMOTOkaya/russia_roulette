@@ -36,6 +36,8 @@ const elements = Object.fromEntries([
   "dissolve-room", "room-hint", "waiting-room", "game-workspace", "room-seed", "board",
   "records", "turn-title", "revision", "weather-badge", "solo-form", "toast",
   "step-panel", "next-step", "step-hint", "controls-shortcut",
+  "header-open-event-debug", "open-event-debug", "event-debug-modal",
+  "event-debug-content", "debug-trace-count", "refresh-debug-view",
 ].map((id) => [id.replaceAll("-", "_"), document.getElementById(id)]));
 
 const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", ice: "❄", high_ground: "△", mine: "◆", medkit: "✚" };
@@ -60,6 +62,9 @@ document.querySelectorAll("dialog").forEach((dialog) => {
 elements.brand_home.addEventListener("click", showLanding);
 elements.back_to_landing.addEventListener("click", showLanding);
 elements.browse_lobby.addEventListener("click", showLobby);
+elements.header_open_event_debug?.addEventListener("click", toggleEventDebugModal);
+elements.open_event_debug?.addEventListener("click", toggleEventDebugModal);
+elements.refresh_debug_view?.addEventListener("click", renderEventDebugModal);
 
 elements.create_password_enabled.addEventListener("change", () => {
   const enabled = elements.create_password_enabled.checked;
@@ -151,6 +156,11 @@ document.querySelectorAll("[data-direction]").forEach((button) => button.addEven
 document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", () => sendCommand({ type: button.dataset.command })));
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "F2") {
+    event.preventDefault();
+    toggleEventDebugModal();
+    return;
+  }
   if (event.target.matches("input, select")) return;
   if (canStepBot()) {
     if (event.code === "Space" || event.key === "Enter") {
@@ -368,6 +378,9 @@ function renderGame() {
     }
   }
   updateControls();
+  if (elements.event_debug_modal?.open) {
+    renderEventDebugModal();
+  }
 }
 
 function renderBoard(game) {
@@ -610,6 +623,121 @@ function openDialog(id) {
   closeDialogs();
   dialog.showModal();
   if (id === "settings-dialog") loadServerSettings();
+  if (id === "event-debug-modal") renderEventDebugModal();
+}
+
+function toggleEventDebugModal() {
+  const modal = elements.event_debug_modal;
+  if (!modal) return;
+  if (modal.open) {
+    modal.close();
+  } else {
+    openDialog("event-debug-modal");
+  }
+}
+
+function renderEventDebugModal() {
+  if (!elements.event_debug_content) return;
+  const game = room?.game;
+  const traces = game?.event_traces || [];
+  if (elements.debug_trace_count) {
+    elements.debug_trace_count.textContent = `共 ${traces.length} 条流水`;
+  }
+
+  if (traces.length === 0) {
+    elements.event_debug_content.innerHTML = `
+      <div class="debug-empty">
+        暂无事件执行流水。<br />进行移动、射击或进入第 2 回合时，权威后端将通过 BFS 树解析事件并在此处实时展示。
+      </div>
+    `;
+    return;
+  }
+
+  // Render traces in reverse chronological order (newest first)
+  const traceCards = [...traces].reverse().map((trace) => {
+    const card = document.createElement("div");
+    card.className = "trace-card";
+
+    const header = document.createElement("div");
+    header.className = "trace-header";
+    header.innerHTML = `
+      <div class="trace-title">
+        <span class="trace-id-badge">#${trace.id}</span>
+        <span class="trace-root-trigger">${escapeHtml(trace.root_trigger_desc)}</span>
+      </div>
+      <div class="trace-meta-info">
+        第 ${trace.round} 轮 · Rev ${trace.revision} · ${trace.nodes.length} 个树节点
+      </div>
+    `;
+
+    const nodesContainer = document.createElement("div");
+    nodesContainer.className = "trace-nodes-container";
+
+    trace.nodes.forEach((node) => {
+      const nodeEl = document.createElement("div");
+      nodeEl.className = `tree-node ${node.wave === 0 ? "root-wave" : "child-wave"}`;
+      nodeEl.style.setProperty("--indent", node.wave);
+
+      const top = document.createElement("div");
+      top.className = "tree-node-top";
+      top.innerHTML = `
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <span class="wave-tag wave-${node.wave}">Wave ${node.wave}</span>
+          <span class="pool-tag">${escapeHtml(node.pool_name)}</span>
+          <span style="font-size: 0.6rem; color: #7f888c;">(路径深度代价: ${node.path_depth})</span>
+        </div>
+        <div class="roll-info">
+          掷骰值: <strong style="color: var(--gold);">${node.roll_value}</strong> / ${node.total_weight}
+        </div>
+      `;
+
+      const triggerDesc = document.createElement("div");
+      triggerDesc.className = "tree-node-trigger";
+      triggerDesc.innerHTML = `<span>⚡</span> <span>${escapeHtml(node.trigger_desc)}</span>`;
+
+      const outcomeDesc = document.createElement("div");
+      outcomeDesc.className = "tree-node-outcome";
+      outcomeDesc.innerHTML = `<strong>结算效果:</strong> ${escapeHtml(node.outcome_desc)}`;
+
+      // Candidates list
+      const candidatesWrap = document.createElement("div");
+      candidatesWrap.className = "candidates-wrap";
+      const cHeading = document.createElement("div");
+      cHeading.className = "candidates-heading";
+      cHeading.textContent = `候选事件池评估 (共 ${node.candidates.length} 项)`;
+      candidatesWrap.appendChild(cHeading);
+
+      node.candidates.forEach((cand) => {
+        const cRow = document.createElement("div");
+        cRow.className = `candidate-row ${cand.selected ? "selected" : ""}`;
+        const pct = (cand.probability_permille / 10).toFixed(1);
+
+        cRow.innerHTML = `
+          <span class="candidate-marker">${cand.selected ? "▶" : "·"}</span>
+          <span class="candidate-name" title="${escapeHtml(cand.title)} (${escapeHtml(cand.event_id)})">
+            ${escapeHtml(cand.title)}
+            ${cand.is_dampener ? '<span class="candidate-dampener-badge">[阻尼闭环]</span>' : ""}
+          </span>
+          <div class="candidate-bar-cell">
+            <span class="candidate-weights">${cand.base_weight} → ${cand.effective_weight}</span>
+            <div class="candidate-bar-track">
+              <div class="candidate-bar-fill" style="width: ${pct}%;"></div>
+            </div>
+          </div>
+          <span class="candidate-pct">${pct}%</span>
+        `;
+        candidatesWrap.appendChild(cRow);
+      });
+
+      nodeEl.append(top, triggerDesc, outcomeDesc, candidatesWrap);
+      nodesContainer.appendChild(nodeEl);
+    });
+
+    card.append(header, nodesContainer);
+    return card;
+  });
+
+  elements.event_debug_content.replaceChildren(...traceCards);
 }
 
 function closeDialogs() {

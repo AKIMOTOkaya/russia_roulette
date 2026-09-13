@@ -167,6 +167,7 @@ impl GameEngine {
                     },
                 },
             ],
+            event_traces: Vec::new(),
         })
     }
 
@@ -223,8 +224,18 @@ impl GameEngine {
                 PlayerCommand::Move { direction } => {
                     state.players[actor_index].consecutive_shots = 0;
                     apply_move(state, actor_index, direction)?;
+                    if outcome.sprint_dash
+                        && state.players[actor_index].status == PlayerStatus::Alive
+                    {
+                        apply_move(state, actor_index, direction)?;
+                    }
                 }
-                PlayerCommand::Shoot { direction } => apply_shot(state, actor_index, direction)?,
+                PlayerCommand::Shoot { direction } => {
+                    apply_shot(state, actor_index, direction, outcome.piercing_shot)?;
+                    if let Some(recoil_dir) = outcome.recoil_direction {
+                        apply_recoil(state, actor_index, recoil_dir)?;
+                    }
+                }
                 PlayerCommand::Wait => {
                     state.players[actor_index].consecutive_shots = 0;
                 }
@@ -333,6 +344,7 @@ impl GameEngine {
             status: state.status,
             weather: state.weather,
             records: state.records[record_start..].to_vec(),
+            event_traces: state.event_traces.clone(),
         })
     }
 }
@@ -488,6 +500,7 @@ fn apply_shot(
     state: &mut GameState,
     actor_index: usize,
     direction: Direction,
+    piercing: bool,
 ) -> Result<(), CoreError> {
     let actor_id = state.players[actor_index].id;
     state.players[actor_index].consecutive_shots = state.players[actor_index]
@@ -553,7 +566,9 @@ fn apply_shot(
                     hit_player: None,
                 };
                 events::EventTreePipeline::default().run(state, impact_trigger)?;
-                break;
+                if !piercing {
+                    break;
+                }
             }
             _ => {}
         }
@@ -580,6 +595,32 @@ fn apply_shot(
         push_event(state, GameEvent::ShotMissed { actor_id })?;
     }
     Ok(())
+}
+
+fn apply_recoil(
+    state: &mut GameState,
+    actor_index: usize,
+    direction: Direction,
+) -> Result<(), CoreError> {
+    if state.players[actor_index].status != PlayerStatus::Alive {
+        return Ok(());
+    }
+    let actor_id = state.players[actor_index].id;
+    let from = state.players[actor_index]
+        .position
+        .ok_or(CoreError::InvalidState("living actor has no position"))?;
+    let Some(target) = step_position(from, direction, state.map_size) else {
+        return Ok(());
+    };
+    let target_index = map_index(target, state.map_size)?;
+    let terrain = state.terrain[target_index];
+    if terrain == Terrain::Wall || terrain == Terrain::Crate {
+        return Ok(());
+    }
+    if living_player_index_at(state, target, Some(actor_id)).is_some() {
+        return Ok(());
+    }
+    complete_move_step(state, actor_index, from, target, direction)
 }
 
 fn resolve_water(state: &mut GameState, actor_index: usize) -> Result<(), CoreError> {
@@ -807,7 +848,7 @@ fn derive_stream(seed: u64, label: u64) -> u64 {
     next_random(&mut state)
 }
 
-fn random_index(state: &mut u64, upper_bound: usize) -> Result<usize, CoreError> {
+pub(crate) fn random_index(state: &mut u64, upper_bound: usize) -> Result<usize, CoreError> {
     if upper_bound == 0 {
         return Err(CoreError::InvalidState("random choice has no candidates"));
     }
@@ -1064,9 +1105,11 @@ mod tests {
 
     #[test]
     fn event_pipeline_ice_slide_moves_actor_forward() {
+        use crate::events::{EventTreePipeline, TriggerPoint};
+
         let mut state = GameEngine::create_game(test_config(44)).expect("game");
         let p1 = state.players[0].id;
-        state.players[0].position = Some(Position { x: 0, y: 0 });
+        state.players[0].position = Some(Position { x: 0, y: 1 });
 
         let ice_pos = Position { x: 0, y: 1 };
         let ice_idx = map_index(ice_pos, state.map_size).expect("idx");
@@ -1076,21 +1119,73 @@ mod tests {
         let empty_idx = map_index(empty_pos, state.map_size).expect("idx");
         state.terrain[empty_idx] = Terrain::Empty;
 
-        // Move down onto ice
-        GameEngine::apply_command(
-            &mut state,
-            p1,
-            PlayerCommand::Move {
-                direction: Direction::Down,
-            },
-        )
-        .expect("move down");
+        let ice_trigger = TriggerPoint::TerrainEntered {
+            actor_id: p1,
+            from: Position { x: 0, y: 0 },
+            to: ice_pos,
+            terrain: Terrain::Ice,
+            direction: Direction::Down,
+        };
 
-        // The player should have landed on ice (0, 1), and if ice slide triggered, slid to (0, 2)
+        let _outcome = EventTreePipeline::default()
+            .run(&mut state, ice_trigger)
+            .expect("ice pipeline");
+
         let final_pos = state.players[0].position.expect("pos");
         assert!(
             final_pos == Position { x: 0, y: 1 } || final_pos == Position { x: 0, y: 2 },
             "player landed at unexpected position {final_pos:?}",
         );
+        assert!(!state.event_traces.is_empty());
+        let last_trace = state.event_traces.last().unwrap();
+        assert_eq!(last_trace.nodes[0].pool_name, "ice_terrain_impact");
+        assert!(!last_trace.nodes[0].candidates.is_empty());
+    }
+
+    #[test]
+    fn event_pipeline_records_diagnostic_tree_traces() {
+        use crate::events::{EventTreePipeline, TriggerPoint};
+
+        let mut state = GameEngine::create_game(test_config(99)).expect("game");
+        let trigger = TriggerPoint::RoundStart { round: 2 };
+
+        let _outcome = EventTreePipeline::default()
+            .run(&mut state, trigger)
+            .expect("round start pipeline");
+
+        assert_eq!(state.event_traces.len(), 1);
+        let trace = &state.event_traces[0];
+        assert_eq!(trace.round, 1);
+        assert!(!trace.nodes.is_empty());
+        let root_node = &trace.nodes[0];
+        assert_eq!(root_node.wave, 0);
+        assert!(root_node.total_weight > 0);
+        for cand in &root_node.candidates {
+            assert!(cand.probability_permille <= 1000);
+        }
+    }
+
+    #[test]
+    fn event_pipeline_heatwave_melts_ice_to_water() {
+        use crate::events::{EventTreePipeline, TriggerPoint};
+
+        let mut state = GameEngine::create_game(test_config(55)).expect("game");
+        let ice_pos = Position { x: 2, y: 2 };
+        let ice_idx = map_index(ice_pos, state.map_size).expect("idx");
+        state.terrain[ice_idx] = Terrain::Ice;
+
+        let trigger = TriggerPoint::SecondaryTrigger {
+            tag: "melt_ices".to_owned(),
+            actor_id: None,
+            position: None,
+        };
+
+        let outcome = EventTreePipeline::default()
+            .run(&mut state, trigger)
+            .expect("heatwave pipeline");
+
+        assert_eq!(outcome.events_resolved, 1);
+        assert_eq!(state.weather, Weather::Heatwave);
+        assert_eq!(state.terrain[ice_idx], Terrain::Water);
     }
 }

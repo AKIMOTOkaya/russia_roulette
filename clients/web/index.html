@@ -15,6 +15,7 @@
           <span><strong>俄罗斯轮盘</strong><small>LOCAL PLAYTEST</small></span>
         </button>
         <div class="session-state">
+          <button class="icon-button debug-toggle-btn" id="header-open-event-debug" type="button" title="打开事件系统调试窗口 (F2)">⚡ 调试 [F2]</button>
           <span class="status-dot" id="connection-dot"></span>
           <span id="connection-status">正在连接</span>
           <code id="tab-identity">TAB · ----</code>
@@ -119,6 +120,7 @@
               <div class="board-heading">
                 <div><p class="section-number">02 / 桌面</p><h2 id="turn-title">等待行动</h2></div>
                 <div class="board-meta">
+                  <button class="icon-button debug-board-btn" id="open-event-debug" type="button" title="打开事件系统调试窗口 (F2)">⚡ 事件调试 [F2]</button>
                   <div class="weather-badge" id="weather-badge">天气：晴朗</div>
                   <div class="revision" id="revision">REV 0</div>
                 </div>
@@ -210,6 +212,27 @@
       <div class="server-setting">
         <div><strong>允许局域网访问</strong><small id="lan-description">当前仅本机可访问</small></div>
         <label class="switch"><input id="lan-toggle" type="checkbox" disabled /><span></span></label>
+      </div>
+    </dialog>
+
+    <dialog class="modal debug-modal" id="event-debug-modal">
+      <div class="modal-heading">
+        <div>
+          <p class="section-number">DEBUG / EVENT TREE INSPECTOR</p>
+          <h2>事件系统调试分析</h2>
+        </div>
+        <div class="debug-heading-tools">
+          <button class="icon-button" id="refresh-debug-view" type="button">刷新</button>
+          <button class="modal-close" data-close-dialog type="button" aria-label="关闭">×</button>
+        </div>
+      </div>
+      <div class="debug-meta-bar">
+        <span>BFS 树形收敛分析</span>
+        <span id="debug-trace-count">0 条执行流水</span>
+        <span class="debug-keyhint">快捷键：F2 开关</span>
+      </div>
+      <div class="debug-content-scroll" id="event-debug-content">
+        <div class="debug-empty">暂无事件执行记录。进行移动、射击或进入第2回合时，触发树将在此处完整展示。</div>
       </div>
     </dialog>
 

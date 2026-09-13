@@ -23,6 +23,7 @@ pub struct EventRegistry;
 impl EventRegistry {
     /// Returns the static event definition for the given event ID.
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn get(id: &EventId) -> Option<EventDef> {
         match id.0.as_str() {
             "evt_weather_blizzard" => Some(EventDef {
@@ -87,6 +88,76 @@ impl EventRegistry {
                 title: "烟尘落定",
                 narrative: "激荡的冲击波渐渐平息，硝烟与碎屑归于沉寂。",
                 chain_cost: 0,
+            }),
+            "evt_recoil_knockback" => Some(EventDef {
+                id: EventId::new("evt_recoil_knockback"),
+                tier: EventTier::Rare,
+                title: "后坐力强冲",
+                narrative: "转轮手枪超量装药！强大的后坐力将射手反冲倒退一格！",
+                chain_cost: 2,
+            }),
+            "evt_piercing_slug" => Some(EventDef {
+                id: EventId::new("evt_piercing_slug"),
+                tier: EventTier::Epic,
+                title: "穿甲重弹",
+                narrative: "高温穿甲弹带着刺耳呼啸，贯穿了前方掩体！",
+                chain_cost: 2,
+            }),
+            "evt_sprint_dash" => Some(EventDef {
+                id: EventId::new("evt_sprint_dash"),
+                tier: EventTier::Uncommon,
+                title: "骤然突进",
+                narrative: "脚步发力过猛，惯性带着身体顺势向前多冲刺了一格！",
+                chain_cost: 1,
+            }),
+            "evt_stumble_trip" => Some(EventDef {
+                id: EventId::new("evt_stumble_trip"),
+                tier: EventTier::Uncommon,
+                title: "脚底绊蒜",
+                narrative: "踩到碎石脚下一滑狼狈摔倒，未能移动，呆立原地！",
+                chain_cost: 1,
+            }),
+            "evt_spatial_swap" => Some(EventDef {
+                id: EventId::new("evt_spatial_swap"),
+                tier: EventTier::Legendary,
+                title: "空间对调",
+                narrative: "强烈的地磁混乱撕裂空间，玩家与地图上一处随机实体对调了位置！",
+                chain_cost: 3,
+            }),
+            "evt_crate_surprise_mine" => Some(EventDef {
+                id: EventId::new("evt_crate_surprise_mine"),
+                tier: EventTier::Epic,
+                title: "箱中藏雷",
+                narrative: "木箱破裂的瞬间引爆了藏在底部的触发式地雷！",
+                chain_cost: 3,
+            }),
+            "evt_crate_surprise_medkit" => Some(EventDef {
+                id: EventId::new("evt_crate_surprise_medkit"),
+                tier: EventTier::Uncommon,
+                title: "翻出护盾",
+                narrative: "木箱散落开来，里面掉落出了一件崭新的防护单兵盾！",
+                chain_cost: 1,
+            }),
+            "evt_ice_crack_collapse" => Some(EventDef {
+                id: EventId::new("evt_ice_crack_collapse"),
+                tier: EventTier::Rare,
+                title: "薄冰碎裂",
+                narrative: "薄冰承受不住重量轰然破碎，冰面化作深水，玩家落入水中！",
+                chain_cost: 2,
+            }),
+            "evt_weather_heatwave" => Some(EventDef {
+                id: EventId::new("evt_weather_heatwave"),
+                tier: EventTier::Epic,
+                title: "炙热热浪",
+                narrative: "滚滚热浪席卷战场，地图上所有的坚冰瞬间消融化为深水！",
+                chain_cost: 2,
+            }),
+            "evt_meteor_strike" => Some(EventDef {
+                id: EventId::new("evt_meteor_strike"),
+                tier: EventTier::Legendary,
+                title: "天降陨石",
+                narrative: "一颗燃烧的天外陨石轰然砸中地表，摧毁了目标地貌！",
+                chain_cost: 3,
             }),
             "evt_nothing_happens" => Some(EventDef {
                 id: EventId::new("evt_nothing_happens"),

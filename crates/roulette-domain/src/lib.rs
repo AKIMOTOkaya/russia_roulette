@@ -58,6 +58,69 @@ pub enum EventTier {
     Legendary,
 }
 
+/// Detailed diagnostic record of an event candidate during a dynamic pool roll.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateTrace {
+    /// Event identifier.
+    pub event_id: EventId,
+    /// Human-readable event title.
+    pub title: String,
+    /// Base selection weight.
+    pub base_weight: u32,
+    /// Effective weight after branch depth dampening.
+    pub effective_weight: u64,
+    /// Probability permille (e.g. 450 = 45.0%).
+    pub probability_permille: u32,
+    /// Whether this entry serves as a chain dampener.
+    pub is_dampener: bool,
+    /// Whether this candidate was selected by the roll.
+    pub selected: bool,
+}
+
+/// Detailed diagnostic trace of a single node in the event BFS resolution tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventNodeTrace {
+    /// Node sequence identifier in the pipeline run.
+    pub node_id: u32,
+    /// Parent node ID (None for root wave 0).
+    pub parent_id: Option<u32>,
+    /// Chronological BFS wave (0 is root).
+    pub wave: u32,
+    /// Cumulative path depth along this tree branch.
+    pub path_depth: u32,
+    /// Human-readable trigger context description.
+    pub trigger_desc: String,
+    /// Diagnostic event pool name evaluated.
+    pub pool_name: String,
+    /// Sum of all candidates' effective weights.
+    pub total_weight: u64,
+    /// Pseudo-random roll value drawn from events RNG.
+    pub roll_value: u64,
+    /// Selected event ID, if any.
+    pub selected_event_id: Option<EventId>,
+    /// Selected event title, if any.
+    pub selected_title: Option<String>,
+    /// All candidates evaluated in this pool roll.
+    pub candidates: Vec<CandidateTrace>,
+    /// Actionable outcome or state change performed by this node.
+    pub outcome_desc: String,
+}
+
+/// Complete diagnostic trace of a single BFS event pipeline execution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PipelineTrace {
+    /// Monotonic run identifier.
+    pub id: u64,
+    /// Match round when triggered.
+    pub round: u32,
+    /// Command revision during this execution.
+    pub revision: u64,
+    /// Summary of the root trigger point.
+    pub root_trigger_desc: String,
+    /// All tree nodes executed in BFS wave order.
+    pub nodes: Vec<EventNodeTrace>,
+}
+
 /// Global weather and environmental condition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -94,6 +157,19 @@ pub enum Direction {
     Left,
     /// Move or shoot right.
     Right,
+}
+
+impl Direction {
+    /// Returns the inverted opposite direction.
+    #[must_use]
+    pub const fn opposite(self) -> Self {
+        match self {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
 }
 
 /// Terrain types enabled by the local Web MVP.
@@ -454,6 +530,8 @@ pub struct GameState {
     pub next_record_sequence: u64,
     /// Complete chronological record of actions, events, turns and notices.
     pub records: Vec<GameRecord>,
+    /// Recent diagnostic traces of event pipeline tree resolutions.
+    pub event_traces: Vec<PipelineTrace>,
 }
 
 /// Public map cell used by the Web client.
@@ -492,6 +570,8 @@ pub struct GameView {
     pub weather: Weather,
     /// Recent chronological actions, events, turns and notifications.
     pub records: Vec<GameRecord>,
+    /// Recent diagnostic traces of event pipeline tree resolutions.
+    pub event_traces: Vec<PipelineTrace>,
 }
 
 /// Lifecycle phase of a local lobby room.
