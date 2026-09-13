@@ -38,6 +38,8 @@ const elements = Object.fromEntries([
   "step-panel", "next-step", "step-hint", "controls-shortcut",
   "header-open-event-debug", "open-event-debug", "event-debug-modal",
   "event-debug-content", "debug-trace-count", "refresh-debug-view",
+  "sidebar-expand-debug", "sidebar-trace-count", "sidebar-event-debug-content",
+  "room-event-inspector",
 ].map((id) => [id.replaceAll("-", "_"), document.getElementById(id)]));
 
 const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", ice: "❄", high_ground: "△", mine: "◆", medkit: "✚" };
@@ -65,6 +67,7 @@ elements.browse_lobby.addEventListener("click", showLobby);
 elements.header_open_event_debug?.addEventListener("click", toggleEventDebugModal);
 elements.open_event_debug?.addEventListener("click", toggleEventDebugModal);
 elements.refresh_debug_view?.addEventListener("click", renderEventDebugModal);
+elements.sidebar_expand_debug?.addEventListener("click", toggleEventDebugModal);
 
 elements.create_password_enabled.addEventListener("change", () => {
   const enabled = elements.create_password_enabled.checked;
@@ -264,7 +267,10 @@ function roomCard(summary) {
 }
 
 function enterRoom(nextRoom) {
-  closeDialogs();
+  if (surface !== "room") {
+    closeEntryDialogs();
+    surface = "room";
+  }
   room = nextRoom;
   roomId = nextRoom.id;
   sessionStorage.setItem("roulette_room_id", roomId);
@@ -291,7 +297,11 @@ function renderRoom() {
     : room.phase === "playing" ? "离开进行中的对局后，你的席位会由机器人接管。" : "本局已经结束，房主仍可解散房间。";
   elements.waiting_room.classList.toggle("hidden", room.phase !== "waiting");
   elements.game_workspace.classList.toggle("hidden", !room.game);
-  if (room.game) renderGame();
+  if (room.game) {
+    renderGame();
+  } else {
+    renderEventDebugTo(elements.sidebar_event_debug_content, elements.sidebar_trace_count, true);
+  }
   setConnection(`房间 ${room.id}`, true);
 }
 
@@ -378,8 +388,9 @@ function renderGame() {
     }
   }
   updateControls();
+  renderEventDebugTo(elements.sidebar_event_debug_content, elements.sidebar_trace_count, true);
   if (elements.event_debug_modal?.open) {
-    renderEventDebugModal();
+    renderEventDebugTo(elements.event_debug_content, elements.debug_trace_count, false);
   }
 }
 
@@ -593,6 +604,7 @@ async function heartbeat() {
 
 function returnToLobby(lobby) {
   surface = "lobby";
+  closeDialogs();
   renderLobby(lobby);
   loadServerSettings();
 }
@@ -637,111 +649,126 @@ function toggleEventDebugModal() {
 }
 
 function renderEventDebugModal() {
-  if (!elements.event_debug_content) return;
+  renderEventDebugTo(elements.event_debug_content, elements.debug_trace_count, false);
+}
+
+function renderEventDebugTo(container, countElement, isSidebar = false) {
+  if (!container) return;
   const game = room?.game;
   const traces = game?.event_traces || [];
-  if (elements.debug_trace_count) {
-    elements.debug_trace_count.textContent = `共 ${traces.length} 条流水`;
+  if (countElement) {
+    countElement.textContent = isSidebar ? `${traces.length} 条执行流水` : `共 ${traces.length} 条流水`;
   }
 
   if (traces.length === 0) {
-    elements.event_debug_content.innerHTML = `
-      <div class="debug-empty">
-        暂无事件执行流水。<br />进行移动、射击或进入第 2 回合时，权威后端将通过 BFS 树解析事件并在此处实时展示。
-      </div>
-    `;
+    const emptyMsg = room?.phase === "waiting"
+      ? "等待开局...<br />对局开始后，权威后端将通过 BFS 树解析事件并在此处实时展示。"
+      : "暂无事件执行流水。<br />进行移动、射击或进入第 2 回合时，权威后端将通过 BFS 树解析事件并在此处实时展示。";
+    container.innerHTML = `<div class="debug-empty">${emptyMsg}</div>`;
     return;
   }
 
   // Render traces in reverse chronological order (newest first)
-  const traceCards = [...traces].reverse().map((trace) => {
-    const card = document.createElement("div");
-    card.className = "trace-card";
+  const traceCards = [...traces].reverse().map(buildTraceCard);
+  container.replaceChildren(...traceCards);
+}
 
-    const header = document.createElement("div");
-    header.className = "trace-header";
-    header.innerHTML = `
-      <div class="trace-title">
-        <span class="trace-id-badge">#${trace.id}</span>
-        <span class="trace-root-trigger">${escapeHtml(trace.root_trigger_desc)}</span>
+function buildTraceCard(trace) {
+  const card = document.createElement("div");
+  card.className = "trace-card";
+
+  const header = document.createElement("div");
+  header.className = "trace-header";
+  header.innerHTML = `
+    <div class="trace-title">
+      <span class="trace-id-badge">#${trace.id}</span>
+      <span class="trace-root-trigger">${escapeHtml(trace.root_trigger_desc)}</span>
+    </div>
+    <div class="trace-meta-info">
+      第 ${trace.round} 轮 · Rev ${trace.revision} · ${trace.nodes.length} 个树节点
+    </div>
+  `;
+
+  const nodesContainer = document.createElement("div");
+  nodesContainer.className = "trace-nodes-container";
+
+  trace.nodes.forEach((node) => {
+    const nodeEl = document.createElement("div");
+    nodeEl.className = `tree-node ${node.wave === 0 ? "root-wave" : "child-wave"}`;
+    nodeEl.style.setProperty("--indent", node.wave);
+
+    const top = document.createElement("div");
+    top.className = "tree-node-top";
+    top.innerHTML = `
+      <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+        <span class="wave-tag wave-${node.wave}">Wave ${node.wave}</span>
+        <span class="pool-tag">${escapeHtml(node.pool_name)}</span>
+        <span style="font-size: 0.6rem; color: #7f888c;">(路径深度代价: ${node.path_depth})</span>
       </div>
-      <div class="trace-meta-info">
-        第 ${trace.round} 轮 · Rev ${trace.revision} · ${trace.nodes.length} 个树节点
+      <div class="roll-info">
+        掷骰值: <strong style="color: var(--gold);">${node.roll_value}</strong> / ${node.total_weight}
       </div>
     `;
 
-    const nodesContainer = document.createElement("div");
-    nodesContainer.className = "trace-nodes-container";
+    const triggerDesc = document.createElement("div");
+    triggerDesc.className = "tree-node-trigger";
+    triggerDesc.innerHTML = `<span>⚡</span> <span>${escapeHtml(node.trigger_desc)}</span>`;
 
-    trace.nodes.forEach((node) => {
-      const nodeEl = document.createElement("div");
-      nodeEl.className = `tree-node ${node.wave === 0 ? "root-wave" : "child-wave"}`;
-      nodeEl.style.setProperty("--indent", node.wave);
+    const outcomeDesc = document.createElement("div");
+    outcomeDesc.className = "tree-node-outcome";
+    outcomeDesc.innerHTML = `<strong>结算效果:</strong> ${escapeHtml(node.outcome_desc)}`;
 
-      const top = document.createElement("div");
-      top.className = "tree-node-top";
-      top.innerHTML = `
-        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-          <span class="wave-tag wave-${node.wave}">Wave ${node.wave}</span>
-          <span class="pool-tag">${escapeHtml(node.pool_name)}</span>
-          <span style="font-size: 0.6rem; color: #7f888c;">(路径深度代价: ${node.path_depth})</span>
-        </div>
-        <div class="roll-info">
-          掷骰值: <strong style="color: var(--gold);">${node.roll_value}</strong> / ${node.total_weight}
-        </div>
-      `;
+    // Candidates list
+    const candidatesWrap = document.createElement("div");
+    candidatesWrap.className = "candidates-wrap";
+    const cHeading = document.createElement("div");
+    cHeading.className = "candidates-heading";
+    cHeading.textContent = `候选事件池评估 (共 ${node.candidates.length} 项)`;
+    candidatesWrap.appendChild(cHeading);
 
-      const triggerDesc = document.createElement("div");
-      triggerDesc.className = "tree-node-trigger";
-      triggerDesc.innerHTML = `<span>⚡</span> <span>${escapeHtml(node.trigger_desc)}</span>`;
+    node.candidates.forEach((cand) => {
+      const cRow = document.createElement("div");
+      cRow.className = `candidate-row ${cand.selected ? "selected" : ""}`;
+      const pct = (cand.probability_permille / 10).toFixed(1);
 
-      const outcomeDesc = document.createElement("div");
-      outcomeDesc.className = "tree-node-outcome";
-      outcomeDesc.innerHTML = `<strong>结算效果:</strong> ${escapeHtml(node.outcome_desc)}`;
-
-      // Candidates list
-      const candidatesWrap = document.createElement("div");
-      candidatesWrap.className = "candidates-wrap";
-      const cHeading = document.createElement("div");
-      cHeading.className = "candidates-heading";
-      cHeading.textContent = `候选事件池评估 (共 ${node.candidates.length} 项)`;
-      candidatesWrap.appendChild(cHeading);
-
-      node.candidates.forEach((cand) => {
-        const cRow = document.createElement("div");
-        cRow.className = `candidate-row ${cand.selected ? "selected" : ""}`;
-        const pct = (cand.probability_permille / 10).toFixed(1);
-
-        cRow.innerHTML = `
-          <span class="candidate-marker">${cand.selected ? "▶" : "·"}</span>
-          <span class="candidate-name" title="${escapeHtml(cand.title)} (${escapeHtml(cand.event_id)})">
-            ${escapeHtml(cand.title)}
-            ${cand.is_dampener ? '<span class="candidate-dampener-badge">[阻尼闭环]</span>' : ""}
-          </span>
-          <div class="candidate-bar-cell">
-            <span class="candidate-weights">${cand.base_weight} → ${cand.effective_weight}</span>
-            <div class="candidate-bar-track">
-              <div class="candidate-bar-fill" style="width: ${pct}%;"></div>
-            </div>
+      cRow.innerHTML = `
+        <div class="candidate-row-top">
+          <div class="candidate-row-title">
+            <span class="candidate-marker">${cand.selected ? "▶" : "·"}</span>
+            <span class="candidate-name" title="${escapeHtml(cand.title)} (${escapeHtml(cand.event_id)})">
+              ${escapeHtml(cand.title)}
+              ${cand.is_dampener ? '<span class="candidate-dampener-badge">[阻尼]</span>' : ""}
+            </span>
           </div>
           <span class="candidate-pct">${pct}%</span>
-        `;
-        candidatesWrap.appendChild(cRow);
-      });
-
-      nodeEl.append(top, triggerDesc, outcomeDesc, candidatesWrap);
-      nodesContainer.appendChild(nodeEl);
+        </div>
+        <div class="candidate-bar-cell">
+          <span class="candidate-weights">${cand.base_weight} → ${cand.effective_weight}</span>
+          <div class="candidate-bar-track">
+            <div class="candidate-bar-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+      `;
+      candidatesWrap.appendChild(cRow);
     });
 
-    card.append(header, nodesContainer);
-    return card;
+    nodeEl.append(top, triggerDesc, outcomeDesc, candidatesWrap);
+    nodesContainer.appendChild(nodeEl);
   });
 
-  elements.event_debug_content.replaceChildren(...traceCards);
+  card.append(header, nodesContainer);
+  return card;
 }
 
 function closeDialogs() {
   document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+}
+
+function closeEntryDialogs() {
+  ["create-dialog", "join-dialog", "solo-dialog"].forEach((id) => {
+    const dialog = document.getElementById(id);
+    if (dialog?.open) dialog.close();
+  });
 }
 
 function restorePlayerNames() {

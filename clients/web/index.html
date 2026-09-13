@@ -94,19 +94,38 @@
         </div>
 
         <div class="room-layout">
-          <aside class="panel room-members">
-            <div class="panel-heading compact">
-              <div><p class="section-number">01 / 成员</p><h2 id="member-count">0 / 6</h2></div>
-              <button class="icon-button owner-only waiting-only" id="add-bot" type="button" aria-label="添加机器人">＋BOT</button>
-            </div>
-            <div id="members"></div>
-            <div class="owner-controls owner-only">
-              <label class="waiting-only">随机种子 <span>可留空</span><input id="room-seed" type="number" min="0" placeholder="自动生成" /></label>
-              <button class="primary waiting-only" id="start-room" type="button">开始对局</button>
-              <button class="danger" id="dissolve-room" type="button">解散房间</button>
-            </div>
-            <p class="room-hint" id="room-hint">至少需要 3 名成员才能开始。</p>
-          </aside>
+          <div class="room-sidebar">
+            <aside class="panel room-members">
+              <div class="panel-heading compact">
+                <div><p class="section-number">01 / 成员</p><h2 id="member-count">0 / 6</h2></div>
+                <button class="icon-button owner-only waiting-only" id="add-bot" type="button" aria-label="添加机器人">＋BOT</button>
+              </div>
+              <div id="members"></div>
+              <div class="owner-controls owner-only">
+                <label class="waiting-only">随机种子 <span>可留空</span><input id="room-seed" type="number" min="0" placeholder="自动生成" /></label>
+                <button class="primary waiting-only" id="start-room" type="button">开始对局</button>
+                <button class="danger" id="dissolve-room" type="button">解散房间</button>
+              </div>
+              <p class="room-hint" id="room-hint">至少需要 3 名成员才能开始。</p>
+            </aside>
+
+            <section class="panel room-event-inspector" id="room-event-inspector">
+              <div class="panel-heading compact">
+                <div>
+                  <p class="section-number">02 / 事件树</p>
+                  <h2>决策与概率分析</h2>
+                </div>
+                <button class="icon-button" id="sidebar-expand-debug" type="button" title="放大窗口 (F2)">放大 [F2]</button>
+              </div>
+              <div class="sidebar-debug-meta">
+                <span id="sidebar-trace-count">0 条执行流水</span>
+                <span class="live-dot" title="实时 BFS 树解析">● LIVE</span>
+              </div>
+              <div class="sidebar-debug-scroll" id="sidebar-event-debug-content">
+                <div class="debug-empty">暂无事件执行记录。<br />移动、射击或第 2 轮时，BFS 树与概率分析将在此实时展现。</div>
+              </div>
+            </section>
+          </div>
 
           <section class="panel waiting-room" id="waiting-room">
             <p class="section-number">02 / 等候区</p>

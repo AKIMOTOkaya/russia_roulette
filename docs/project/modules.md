@@ -43,7 +43,7 @@ flowchart LR
 
 ## 非 Rust 部分
 
-- `clients/web`：当前为无构建的 HTML/CSS/JavaScript 本地客户端；使用 `sessionStorage` 保存 Tab ID 与所在房间。界面按品牌封面、房间大厅、模态操作、房间成员和对局棋盘分层，房间列表占据大厅主要视野，创建/加入/单人模拟/创始人设置按需弹出；记录按 sequence 自上而下单列展示；内置 F2 事件系统调试检查器，实时剖析 BFS 决策树、候选事件阻尼权重与选择概率。公网版框架未定。
+- `clients/web`：当前为无构建的 HTML/CSS/JavaScript 本地客户端；使用 `sessionStorage` 保存 Tab ID 与所在房间。界面按品牌封面、房间大厅、模态操作、房间成员和对局棋盘分层，房间列表占据大厅主要视野，创建/加入/单人模拟/创始人设置按需弹出；记录按 sequence 自上而下单列展示；房间左侧栏常驻事件决策树检查器（亦保留 F2 快捷键与放大模态），实时展示权威后端 BFS 事件树、阻尼动态权重与结算效果，轮询机制已与模态关闭解耦。公网版框架未定。
 - `protocol`：作为 Rust、TypeScript、Python 等语言共享契约的来源。
 - `scripts`：允许使用适合任务的 Shell、Python、JavaScript 或 Rust，但必须记录运行环境和输入输出。
 
