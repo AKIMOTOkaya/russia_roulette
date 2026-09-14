@@ -459,7 +459,7 @@ function renderGame() {
   if (elements.stalemate_badge) {
     const stalemateRounds = game.rounds_without_elimination || 0;
     if (stalemateRounds > 0) {
-      elements.stalemate_badge.textContent = `🔥 僵局第 ${stalemateRounds} 轮 (致死率提升)`;
+      elements.stalemate_badge.textContent = `🔥 僵局 ${stalemateRounds} 次未减员 (致死率提升)`;
       elements.stalemate_badge.classList.remove("hidden");
     } else {
       elements.stalemate_badge.classList.add("hidden");
@@ -478,10 +478,11 @@ function renderGame() {
         : `${active.name} 行动中 · 等待房主推进`;
     } else {
       elements.turn_title.textContent = active?.id === game.human_player_id
-        ? "轮到你行动"
-        : `${active?.name || "玩家"} 行动中`;
+        ? "轮到你行动 · 请选择意图"
+        : `${active?.name || "其他玩家"} 行动中`;
     }
   }
+  renderPlayerList(game);
   updateControls();
   renderEventDebugTo(elements.sidebar_event_debug_content, elements.sidebar_trace_count, true);
   if (elements.event_debug_modal?.open) {
@@ -510,22 +511,155 @@ function renderBoard(game) {
   }));
 }
 
+function groupRecordsIntoTurns(game) {
+  const turns = [];
+  let currentTurn = null;
+
+  for (const record of game.records) {
+    if (record.category === "turn") {
+      if (currentTurn) {
+        turns.push(currentTurn);
+      }
+      currentTurn = {
+        type: "turn",
+        round: record.round,
+        player_id: record.player_id,
+        sequence: record.sequence,
+        action: null,
+        items: [],
+      };
+    } else if (record.category === "notification") {
+      if (!currentTurn) {
+        turns.push({
+          type: "notification",
+          round: null,
+          player_id: null,
+          sequence: record.sequence,
+          action: null,
+          items: [record],
+        });
+      } else {
+        currentTurn.items.push(record);
+      }
+    } else {
+      if (!currentTurn) {
+        currentTurn = {
+          type: "turn",
+          round: 1,
+          player_id: record.actor_id || null,
+          sequence: record.sequence,
+          action: null,
+          items: [],
+        };
+      }
+      if (record.category === "action" && !currentTurn.action) {
+        currentTurn.action = record;
+        if (!currentTurn.player_id) {
+          currentTurn.player_id = record.actor_id;
+        }
+      }
+      currentTurn.items.push(record);
+    }
+  }
+
+  if (currentTurn) {
+    turns.push(currentTurn);
+  }
+
+  return turns;
+}
+
 function renderRecords(game) {
-  const records = [...game.records].reverse();
-  elements.records.replaceChildren(...records.map((record) => {
-    const item = document.createElement("li");
-    item.className = `record ${record.category}`;
-    const badge = document.createElement("span");
-    badge.className = "record-badge";
-    badge.textContent = ({ action: "行动", event: "事件", turn: "回合", notification: "通知" })[record.category];
-    const content = document.createElement("span");
-    content.className = "record-content";
-    content.textContent = recordText(game, record);
-    const sequence = document.createElement("span");
-    sequence.className = "record-sequence";
-    sequence.textContent = `#${record.sequence}`;
-    item.append(badge, content, sequence);
-    return item;
+  const turns = groupRecordsIntoTurns(game);
+  const reversedTurns = [...turns].reverse();
+
+  elements.records.replaceChildren(...reversedTurns.map((turn) => {
+    const card = document.createElement("li");
+    card.className = `turn-frame-card ${turn.type === "notification" ? "notification-frame" : ""}`;
+
+    const header = document.createElement("div");
+    header.className = "turn-frame-header";
+
+    const actorDiv = document.createElement("div");
+    actorDiv.className = "turn-frame-actor";
+
+    const metaDiv = document.createElement("div");
+    metaDiv.className = "turn-frame-meta";
+
+    if (turn.type === "notification") {
+      const title = document.createElement("span");
+      title.textContent = "📢 系统通知";
+      actorDiv.append(title);
+    } else {
+      const player = game.players.find((p) => p.id === turn.player_id);
+      const isBot = player?.kind === "bot";
+
+      const roundSpan = document.createElement("span");
+      roundSpan.className = "turn-frame-round";
+      roundSpan.textContent = `第 ${turn.round} 回合`;
+
+      const badge = document.createElement("span");
+      badge.className = `turn-actor-badge ${isBot ? "bot" : "human"}`;
+      badge.textContent = isBot ? "BOT" : "真人";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = player?.name || `玩家 ${turn.player_id || "?"}`;
+
+      actorDiv.append(roundSpan, badge, nameSpan);
+
+      if (turn.action) {
+        const actionChip = document.createElement("span");
+        actionChip.className = "turn-action-chip";
+        actionChip.textContent = commandText(turn.action.command);
+        metaDiv.append(actionChip);
+      }
+    }
+
+    const seqSpan = document.createElement("span");
+    seqSpan.className = "record-sequence";
+    seqSpan.textContent = `#${turn.sequence}`;
+    metaDiv.append(seqSpan);
+
+    header.append(actorDiv, metaDiv);
+    card.append(header);
+
+    const body = document.createElement("div");
+    body.className = "turn-frame-body";
+
+    if (turn.items.length === 0) {
+      const emptyRow = document.createElement("div");
+      emptyRow.className = "turn-record-row";
+      emptyRow.textContent = "等待执行行动...";
+      body.append(emptyRow);
+    } else {
+      for (const record of turn.items) {
+        const row = document.createElement("div");
+        let extraClass = "";
+        if (record.category === "event") {
+          if (record.event.type === "player_eliminated") extraClass = " lethal";
+          else if (record.event.type === "dramatic_event") extraClass = " dramatic";
+        }
+        row.className = `turn-record-row record ${record.category}${extraClass}`;
+
+        const badge = document.createElement("span");
+        badge.className = "record-badge";
+        badge.textContent = ({ action: "行动", event: "事件", turn: "回合", notification: "通知" })[record.category];
+
+        const content = document.createElement("span");
+        content.className = "record-content";
+        content.textContent = recordText(game, record);
+
+        const rowSeq = document.createElement("span");
+        rowSeq.className = "record-sequence";
+        rowSeq.textContent = `#${record.sequence}`;
+
+        row.append(badge, content, rowSeq);
+        body.append(row);
+      }
+    }
+
+    card.append(body);
+    return card;
   }));
 }
 

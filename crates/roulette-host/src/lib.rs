@@ -1038,7 +1038,13 @@ mod tests {
             .step_bot(&room.id.0, &owner, bot_game.revision)
             .expect("step bot");
         let owner_turn_game = after_bot.game.as_ref().expect("game");
-        assert_eq!(owner_turn_game.current_player_id, Some(PlayerId(1)));
+        let next_actor_id = owner_turn_game.current_player_id.expect("next actor");
+        let next_player = owner_turn_game
+            .players
+            .iter()
+            .find(|p| p.id == next_actor_id)
+            .expect("player");
+        assert_eq!(next_player.kind, PlayerKind::Human);
         assert_eq!(owner_turn_game.revision, bot_game.revision + 1);
 
         // Cannot step bot when it is a human's turn

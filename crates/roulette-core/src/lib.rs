@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::collections::VecDeque;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -213,6 +214,12 @@ impl GameEngine {
             return Err(CoreError::PlayerEliminated(actor_id));
         }
 
+        let living_before = state
+            .players
+            .iter()
+            .filter(|player| player.status == PlayerStatus::Alive)
+            .count();
+
         let record_start = state.records.len();
         append_record(state, GameRecordContent::Action { actor_id, command })?;
 
@@ -254,6 +261,18 @@ impl GameEngine {
         }
 
         resolve_water(state, actor_index)?;
+
+        let living_after = state
+            .players
+            .iter()
+            .filter(|player| player.status == PlayerStatus::Alive)
+            .count();
+        if living_after < living_before {
+            state.rounds_without_elimination = 0;
+        } else {
+            state.rounds_without_elimination = state.rounds_without_elimination.saturating_add(1);
+        }
+
         state.revision = state
             .revision
             .checked_add(1)
@@ -262,12 +281,17 @@ impl GameEngine {
         Ok(state.records[record_start..].to_vec())
     }
 
-    /// Chooses a simple deterministic random command for the current bot.
+    /// Chooses an intelligent deterministic command for the current bot.
+    ///
+    /// The bot will automatically attack enemies in line of sight, use BFS pathfinding
+    /// to seek out the nearest living enemy while avoiding walls, crates, and negative hazards (landmines),
+    /// and never chooses to wait.
     ///
     /// # Errors
     ///
     /// Returns an error when the actor does not own the turn, is not a bot, or
     /// the state violates a Core invariant.
+    #[allow(clippy::too_many_lines)]
     pub fn choose_random_bot_command(
         state: &mut GameState,
         actor_id: PlayerId,
@@ -281,22 +305,167 @@ impl GameEngine {
         }
         let actor_index = player_index(state, actor_id)?;
         if state.players[actor_index].kind != PlayerKind::Bot {
-            return Err(CoreError::InvalidState(
-                "random policy requested for a human",
-            ));
+            return Err(CoreError::InvalidState("policy requested for a human"));
         }
 
-        let action_roll = random_index(&mut state.rng.bot, 10)?;
-        let direction = match random_index(&mut state.rng.bot, 4)? {
+        let origin = state.players[actor_index]
+            .position
+            .ok_or(CoreError::InvalidState("living actor has no position"))?;
+        let origin_terrain = state.terrain[map_index(origin, state.map_size)?];
+        let shot_range = if origin_terrain == Terrain::HighGround {
+            BASE_SHOT_RANGE.saturating_add(1)
+        } else {
+            BASE_SHOT_RANGE
+        };
+
+        let directions = [
+            Direction::Up,
+            Direction::Down,
+            Direction::Left,
+            Direction::Right,
+        ];
+
+        // 1. Check direct line-of-sight for living enemies in all 4 cardinal directions
+        let mut target_shoot_dirs = Vec::new();
+        for &dir in &directions {
+            let mut cursor = origin;
+            for _ in 0..shot_range {
+                let Some(next) = step_position(cursor, dir, state.map_size) else {
+                    break;
+                };
+                cursor = next;
+                let t_idx = map_index(cursor, state.map_size)?;
+                let terrain = state.terrain[t_idx];
+                if terrain == Terrain::Wall || terrain == Terrain::Crate {
+                    break;
+                }
+                if living_player_index_at(state, cursor, Some(actor_id)).is_some() {
+                    target_shoot_dirs.push(dir);
+                    break;
+                }
+            }
+        }
+
+        if !target_shoot_dirs.is_empty() {
+            let pick_idx = random_index(&mut state.rng.bot, target_shoot_dirs.len())?;
+            return Ok(PlayerCommand::Shoot {
+                direction: target_shoot_dirs[pick_idx],
+            });
+        }
+
+        // 2. Find target living enemy positions
+        let enemy_positions: Vec<Position> = state
+            .players
+            .iter()
+            .filter(|p| p.id != actor_id && p.status == PlayerStatus::Alive)
+            .filter_map(|p| p.position)
+            .collect();
+
+        if enemy_positions.is_empty() {
+            return Ok(PlayerCommand::Shoot {
+                direction: Direction::Right,
+            });
+        }
+
+        // 3. BFS pathfinding to find shortest path to nearest living enemy
+        // Avoids Wall, Crate, Mine, and map boundaries.
+        let mut queue = VecDeque::new();
+        let map_area = state.terrain.len();
+        let mut visited = vec![false; map_area];
+
+        let origin_idx = map_index(origin, state.map_size)?;
+        visited[origin_idx] = true;
+
+        for &dir in &directions {
+            if let Some(next_pos) = step_position(origin, dir, state.map_size) {
+                let next_idx = map_index(next_pos, state.map_size)?;
+                let terrain = state.terrain[next_idx];
+                if terrain != Terrain::Wall && terrain != Terrain::Crate && terrain != Terrain::Mine
+                {
+                    visited[next_idx] = true;
+                    queue.push_back((next_pos, dir));
+                }
+            }
+        }
+
+        let mut chosen_move_dir = None;
+
+        while let Some((curr_pos, initial_dir)) = queue.pop_front() {
+            if enemy_positions.contains(&curr_pos) {
+                chosen_move_dir = Some(initial_dir);
+                break;
+            }
+
+            for &dir in &directions {
+                if let Some(neighbor_pos) = step_position(curr_pos, dir, state.map_size) {
+                    let n_idx = map_index(neighbor_pos, state.map_size)?;
+                    if !visited[n_idx] {
+                        visited[n_idx] = true;
+                        let terrain = state.terrain[n_idx];
+                        if terrain != Terrain::Wall
+                            && terrain != Terrain::Crate
+                            && terrain != Terrain::Mine
+                        {
+                            queue.push_back((neighbor_pos, initial_dir));
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(dir) = chosen_move_dir {
+            return Ok(PlayerCommand::Move { direction: dir });
+        }
+
+        // 4. Fallback if BFS couldn't find a path to enemy (e.g. walled off)
+        // Find any adjacent cell that isn't Wall/Crate/Mine
+        let mut safe_fallback_dirs = Vec::new();
+        for &dir in &directions {
+            if let Some(next_pos) = step_position(origin, dir, state.map_size) {
+                let n_idx = map_index(next_pos, state.map_size)?;
+                let terrain = state.terrain[n_idx];
+                if terrain != Terrain::Wall && terrain != Terrain::Crate && terrain != Terrain::Mine
+                {
+                    safe_fallback_dirs.push(dir);
+                }
+            }
+        }
+
+        if !safe_fallback_dirs.is_empty() {
+            let pick_idx = random_index(&mut state.rng.bot, safe_fallback_dirs.len())?;
+            return Ok(PlayerCommand::Move {
+                direction: safe_fallback_dirs[pick_idx],
+            });
+        }
+
+        // 5. Boxed in by obstacles: shoot at adjacent Crate or Wall to break out
+        let mut obstacle_dirs = Vec::new();
+        for &dir in &directions {
+            if let Some(next_pos) = step_position(origin, dir, state.map_size) {
+                let n_idx = map_index(next_pos, state.map_size)?;
+                let terrain = state.terrain[n_idx];
+                if terrain == Terrain::Crate || terrain == Terrain::Wall {
+                    obstacle_dirs.push(dir);
+                }
+            }
+        }
+
+        if !obstacle_dirs.is_empty() {
+            let pick_idx = random_index(&mut state.rng.bot, obstacle_dirs.len())?;
+            return Ok(PlayerCommand::Shoot {
+                direction: obstacle_dirs[pick_idx],
+            });
+        }
+
+        // 6. Absolute fallback: shoot in any direction. Never Wait!
+        let fallback_dir = match random_index(&mut state.rng.bot, 4)? {
             0 => Direction::Up,
             1 => Direction::Down,
             2 => Direction::Left,
             _ => Direction::Right,
         };
-        Ok(match action_roll {
-            0..=3 => PlayerCommand::Move { direction },
-            4..=7 => PlayerCommand::Shoot { direction },
-            _ => PlayerCommand::Wait,
+        Ok(PlayerCommand::Shoot {
+            direction: fallback_dir,
         })
     }
 
@@ -797,8 +966,6 @@ fn finish_or_advance_turn(state: &mut GameState) -> Result<(), CoreError> {
                     .round
                     .checked_add(1)
                     .ok_or(CoreError::InvalidState("round overflow"))?;
-                state.rounds_without_elimination =
-                    state.rounds_without_elimination.saturating_add(1);
                 let round_trigger = events::TriggerPoint::RoundStart { round: state.round };
                 events::EventTreePipeline::default().run(state, round_trigger)?;
             }
@@ -1162,25 +1329,24 @@ mod tests {
     }
 
     #[test]
-    fn test_low_depth_suppression_of_dampeners() {
+    fn test_move_intent_baseline_high_normal_rate() {
         use crate::events::{TriggerPoint, resolve_pool};
 
-        let state = GameEngine::create_game(test_config(77)).expect("game");
+        let state = GameEngine::create_game(test_config(55)).expect("game");
         let pos = state.players[0].position.unwrap();
         let free_dir = [
-            Direction::Down,
             Direction::Right,
+            Direction::Down,
             Direction::Left,
             Direction::Up,
         ]
         .into_iter()
         .find(|dir| {
-            if let Some(target) = crate::step_position(pos, *dir, state.map_size) {
-                let t_idx = crate::map_index(target, state.map_size).unwrap();
+            let target = crate::step_position(pos, *dir, state.map_size);
+            target.is_some_and(|t| {
+                let t_idx = crate::map_index(t, state.map_size).unwrap_or(0);
                 state.terrain[t_idx] != Terrain::Wall
-            } else {
-                false
-            }
+            })
         })
         .expect("free dir");
 
@@ -1195,7 +1361,7 @@ mod tests {
         let mut rng = 42;
         let (_, total_weight, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
 
-        // At depth 0, stalemate 0: dampener (nothing_happens) and stumble should be low
+        // At depth 0, stalemate 0: nothing_happens is tuned to ~75% for basic move
         let nothing_cand = candidates
             .iter()
             .find(|c| c.event_id.0 == "evt_nothing_happens")
@@ -1205,50 +1371,80 @@ mod tests {
             .find(|c| c.event_id.0 == "evt_stumble_trip")
             .expect("cand");
 
-        // nothing_happens (6/60 = 10%), stumble (4/60 = 6.6%)
-        assert!(
-            nothing_cand.probability_permille <= 120,
-            "nothing happens should be <= 12%, got {}",
+        assert_eq!(
+            nothing_cand.probability_permille, 750,
+            "move_intent normal nothing_happens should be 75%, got {}",
             nothing_cand.probability_permille
         );
         assert!(
-            stumble_cand.probability_permille <= 80,
-            "stumble should be <= 8%, got {}",
+            stumble_cand.probability_permille <= 50,
+            "stumble should be <= 5%, got {}",
             stumble_cand.probability_permille
         );
-        assert!(total_weight > 0);
+        assert_eq!(total_weight, 100);
     }
 
     #[test]
-    fn test_stalemate_escalation_boosts_lethal_weights() {
+    fn test_stalemate_escalation_boosts_lethal_weights_and_respects_caps() {
         use crate::events::{TriggerPoint, resolve_pool};
 
         let state = GameEngine::create_game(test_config(88)).expect("game");
-        let round_trigger = TriggerPoint::RoundStart { round: 2 };
-        let pool = resolve_pool(&round_trigger, &state).expect("pool");
+        let shoot_trigger = TriggerPoint::ActionIntent {
+            actor_id: state.players[0].id,
+            command: PlayerCommand::Shoot {
+                direction: Direction::Right,
+            },
+        };
+        let pool = resolve_pool(&shoot_trigger, &state).expect("pool");
 
         let mut rng = 123;
         let (_, _, _, cands_peace0) = pool.roll_with_trace(0, 0, &mut rng);
-        let (_, _, _, cands_peace4) = pool.roll_with_trace(0, 4, &mut rng);
+        let (_, _, _, cands_peace3) = pool.roll_with_trace(0, 3, &mut rng);
 
-        let meteor_peace0 = cands_peace0
+        let ricochet0 = cands_peace0
             .iter()
-            .find(|c| c.event_id.0 == "evt_meteor_strike")
-            .expect("meteor");
-        let meteor_peace4 = cands_peace4
+            .find(|c| c.event_id.0 == "evt_ricochet_deadly")
+            .expect("ricochet");
+        let ricochet3 = cands_peace3
             .iter()
-            .find(|c| c.event_id.0 == "evt_meteor_strike")
-            .expect("meteor");
+            .find(|c| c.event_id.0 == "evt_ricochet_deadly")
+            .expect("ricochet");
 
-        assert!(meteor_peace0.is_lethal);
-        assert!(meteor_peace4.is_lethal);
+        let piercing3 = cands_peace3
+            .iter()
+            .find(|c| c.event_id.0 == "evt_piercing_slug")
+            .expect("piercing");
 
-        // Base 15 -> with stalemate 4: 15 + 4 * 25 = 115!
-        assert_eq!(meteor_peace0.effective_weight, 15);
-        assert_eq!(meteor_peace4.effective_weight, 115);
+        // Ricochet is single lethal: no cap, high growth
+        assert!(ricochet0.is_lethal);
+        assert!(ricochet3.is_lethal);
+        assert_eq!(ricochet0.effective_weight, 15);
+        assert_eq!(ricochet3.effective_weight, 15 + 3 * 45);
         assert!(
-            meteor_peace4.probability_permille > meteor_peace0.probability_permille * 2,
-            "meteor probability should more than double in stalemate"
+            ricochet3.probability_permille > 500,
+            "ricochet should dominate single-target lethal after 3 peaceful actions, got {}",
+            ricochet3.probability_permille
+        );
+
+        // Piercing slug is potential multi-kill: capped at 250 permille (25%)
+        assert!(
+            piercing3.probability_permille <= 250,
+            "piercing slug should not exceed 250 permille cap, got {}",
+            piercing3.probability_permille
+        );
+
+        // Round start meteor strike is catastrophic multi-kill: capped at 120 permille (12%)
+        let round_trigger = TriggerPoint::RoundStart { round: 2 };
+        let round_pool = resolve_pool(&round_trigger, &state).expect("round pool");
+        let (_, _, _, round_cands4) = round_pool.roll_with_trace(0, 4, &mut rng);
+        let meteor4 = round_cands4
+            .iter()
+            .find(|c| c.event_id.0 == "evt_meteor_strike")
+            .expect("meteor");
+        assert!(
+            meteor4.probability_permille <= 120,
+            "meteor strike should not exceed 120 permille cap, got {}",
+            meteor4.probability_permille
         );
     }
 
@@ -1257,7 +1453,7 @@ mod tests {
         let mut state = GameEngine::create_game(test_config(66)).expect("game");
         assert_eq!(state.rounds_without_elimination, 0);
 
-        // Advance turn past all living players to increment round
+        // Advance turn past all living players (each action increments stalemate counter)
         let turn_count = state.turn_order.len();
         for _ in 0..turn_count {
             let actor_id = state.players[state.current_turn_index].id;
@@ -1265,7 +1461,11 @@ mod tests {
         }
 
         assert_eq!(state.round, 2);
-        assert_eq!(state.rounds_without_elimination, 1);
+        // Each action without elimination increments counter
+        assert_eq!(
+            state.rounds_without_elimination,
+            u32::try_from(turn_count).unwrap()
+        );
 
         // Eliminate player 1
         let killer_id = state.players[1].id;
@@ -1680,5 +1880,64 @@ mod tests {
         // Crate is destroyed (no longer Crate, could be Empty or reveal a surprise mine/medkit)
         assert_ne!(state.terrain[crate_idx], Terrain::Crate);
         assert_eq!(state.players[1].status, PlayerStatus::Alive);
+    }
+
+    #[test]
+    fn test_smart_bot_shoots_visible_enemy() {
+        let mut state = GameEngine::create_game(test_config(42)).expect("game");
+        let bot_id = state.players[0].id;
+        state.players[0].kind = PlayerKind::Bot;
+        state.players[0].position = Some(Position { x: 1, y: 1 });
+        state.players[1].position = Some(Position { x: 1, y: 3 });
+
+        let clear_idx = map_index(Position { x: 1, y: 2 }, state.map_size).unwrap();
+        state.terrain[clear_idx] = Terrain::Empty;
+
+        let cmd = GameEngine::choose_random_bot_command(&mut state, bot_id).expect("bot cmd");
+        assert_eq!(
+            cmd,
+            PlayerCommand::Shoot {
+                direction: Direction::Down
+            }
+        );
+    }
+
+    #[test]
+    fn test_smart_bot_avoids_landmines_and_never_waits() {
+        let mut state = GameEngine::create_game(test_config(42)).expect("game");
+        let bot_id = state.players[0].id;
+        state.players[0].kind = PlayerKind::Bot;
+        state.players[0].position = Some(Position { x: 1, y: 1 });
+        // Enemy is at (2, 3), not in a cardinal line of sight
+        state.players[1].position = Some(Position { x: 2, y: 3 });
+
+        // Block cardinal line of sight / moves with walls
+        let down_idx = map_index(Position { x: 1, y: 2 }, state.map_size).unwrap();
+        state.terrain[down_idx] = Terrain::Wall;
+        let up_idx = map_index(Position { x: 1, y: 0 }, state.map_size).unwrap();
+        state.terrain[up_idx] = Terrain::Wall;
+
+        // Place a mine at Right (2, 1)
+        let right_idx = map_index(Position { x: 2, y: 1 }, state.map_size).unwrap();
+        state.terrain[right_idx] = Terrain::Mine;
+
+        // Clear safe path via Left (0, 1) -> (0, 2) -> (0, 3) -> (2, 3)
+        let left_idx = map_index(Position { x: 0, y: 1 }, state.map_size).unwrap();
+        state.terrain[left_idx] = Terrain::Empty;
+        let p02_idx = map_index(Position { x: 0, y: 2 }, state.map_size).unwrap();
+        state.terrain[p02_idx] = Terrain::Empty;
+        let p03_idx = map_index(Position { x: 0, y: 3 }, state.map_size).unwrap();
+        state.terrain[p03_idx] = Terrain::Empty;
+
+        let cmd = GameEngine::choose_random_bot_command(&mut state, bot_id).expect("bot cmd");
+
+        // The bot should navigate around the mine via Left, NOT step Right onto the mine, and NEVER Wait
+        assert_ne!(cmd, PlayerCommand::Wait);
+        assert_eq!(
+            cmd,
+            PlayerCommand::Move {
+                direction: Direction::Left
+            }
+        );
     }
 }

@@ -324,7 +324,107 @@ input::placeholder { color: #555b5d; }
 .records-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .records-heading h2 { margin: 6px 0 0; font-family: Georgia, "Songti SC", serif; font-size: 1.2rem; font-weight: 400; }
 .records-heading > p { margin: 0; color: var(--muted); font-size: 0.62rem; letter-spacing: 0.08em; }
-#records { display: grid; grid-template-columns: 1fr; max-height: 330px; margin: 15px 0 0; padding: 0; overflow: auto; list-style: none; }
+#records { display: flex; flex-direction: column; gap: 10px; max-height: 400px; margin: 15px 0 0; padding: 0; overflow-y: auto; list-style: none; }
+.turn-frame-card {
+  display: flex;
+  flex-direction: column;
+  background: rgba(22, 27, 29, 0.75);
+  border: 1px solid #333a3d;
+  border-radius: 6px;
+  padding: 10px 14px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.turn-frame-card:first-child {
+  border-color: #526065;
+  border-left: 3px solid var(--accent);
+  background: rgba(28, 34, 37, 0.9);
+}
+.turn-frame-card.notification-frame {
+  border-left: 3px solid var(--green);
+}
+.turn-frame-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #2a3133;
+}
+.turn-frame-actor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--paper);
+}
+.turn-frame-round {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-family: ui-monospace, monospace;
+}
+.turn-actor-badge {
+  display: inline-block;
+  font-size: 0.52rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.turn-actor-badge.human {
+  background: #3e321e;
+  color: #e5c178;
+  border: 1px solid #6b552d;
+}
+.turn-actor-badge.bot {
+  background: #252b35;
+  color: #8da4c4;
+  border: 1px solid #3d4a5c;
+}
+.turn-frame-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.turn-action-chip {
+  font-size: 0.65rem;
+  font-family: ui-monospace, monospace;
+  color: #e5c178;
+  background: rgba(229, 193, 120, 0.1);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(229, 193, 120, 0.25);
+}
+.turn-frame-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.turn-record-row {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+.turn-record-row.lethal {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+.turn-record-row.lethal .record-badge {
+  color: #ff4757 !important;
+}
+.turn-record-row.dramatic {
+  color: #f1c40f;
+}
+.turn-record-row.dramatic .record-badge {
+  color: #f39c12 !important;
+}
 .record { display: grid; grid-template-columns: 42px 1fr auto; gap: 10px; align-items: baseline; border-top: 1px solid #2d3335; padding: 8px 0; color: var(--muted); font-family: ui-monospace, monospace; font-size: 0.68rem; line-height: 1.5; }
 .record-badge { color: #a4a09a; font-size: 0.56rem; font-weight: 800; letter-spacing: 0.12em; }
 .record.action .record-badge { color: #d7b56c; }
