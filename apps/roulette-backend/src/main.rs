@@ -21,7 +21,9 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
-use roulette_domain::{LobbyView, PlayerCommand, RoomMemberId, RoomView, TabId};
+use roulette_domain::{
+    LobbyView, PlayerCommand, RoomMemberId, RoomView, TabId, Terrain, TerrainProperties,
+};
 use roulette_host::{CreateRoomConfig, HostError, JoinRoomConfig, LocalLobby};
 use serde::{Deserialize, Serialize};
 
@@ -223,6 +225,7 @@ fn build_router(state: Arc<AppState>) -> Router {
         .route("/styles.css", get(styles))
         .route("/app.js", get(script))
         .route("/api/health", get(health))
+        .route("/api/rules/terrains", get(terrain_rules))
         .route("/api/lobby", get(lobby_view))
         .route("/api/session/heartbeat", post(heartbeat))
         .route("/api/rooms", post(create_room))
@@ -281,6 +284,10 @@ async fn script() -> impl IntoResponse {
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
+}
+
+async fn terrain_rules() -> Json<Vec<TerrainProperties>> {
+    Json(Terrain::all_properties())
 }
 
 async fn lobby_view(

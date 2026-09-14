@@ -13,7 +13,7 @@ use roulette_domain::{
     BlockReason, CellView, CreateGameConfig, Direction, EliminationCause, GameEvent,
     GameNotification, GameRecord, GameRecordContent, GameState, GameStatus, GameView,
     NotificationLevel, PlayerCommand, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position,
-    RngStreams, Terrain, Weather,
+    RngStreams, Terrain, TerrainLayer, Weather,
 };
 
 pub mod events;
@@ -574,31 +574,67 @@ fn apply_shot(
         };
         cursor = next;
         let terrain_index = map_index(cursor, state.map_size)?;
-        match state.terrain[terrain_index] {
-            Terrain::Wall => break,
-            Terrain::Crate => {
-                state.terrain[terrain_index] = Terrain::Empty;
+        let current_terrain = state.terrain[terrain_index];
+        let props = current_terrain.properties();
+
+        // 1. Terrain interaction, hardness check and legality protection
+        if props.layer == TerrainLayer::AboveGround && props.hardness.is_some() {
+            let hardness = props.hardness.unwrap_or(0);
+            let Some(target_terrain) = props.transform_on_destroy else {
+                hit_something = true;
+                break;
+            };
+
+            if piercing {
+                if hardness <= 2 {
+                    // Armor-piercing bullet: destroys hardness <= 2 (including Wall and Crate)
+                    state.terrain[terrain_index] = target_terrain;
+                    push_event(
+                        state,
+                        GameEvent::TerrainChanged {
+                            position: cursor,
+                            from: current_terrain,
+                            to: target_terrain,
+                        },
+                    )?;
+                    hit_something = true;
+                    let impact_trigger = events::TriggerPoint::ProjectileImpact {
+                        shooter_id: actor_id,
+                        position: cursor,
+                        hit_terrain: current_terrain,
+                        hit_player: None,
+                    };
+                    events::EventTreePipeline::default().run(state, impact_trigger)?;
+                    // AP bullet penetrates through! Does not break.
+                } else {
+                    hit_something = true;
+                    break;
+                }
+            } else if hardness <= 1 {
+                // Normal bullet destroys fragile terrain (e.g. Crate) and stops
+                state.terrain[terrain_index] = target_terrain;
                 push_event(
                     state,
                     GameEvent::TerrainChanged {
                         position: cursor,
-                        from: Terrain::Crate,
-                        to: Terrain::Empty,
+                        from: current_terrain,
+                        to: target_terrain,
                     },
                 )?;
                 hit_something = true;
                 let impact_trigger = events::TriggerPoint::ProjectileImpact {
                     shooter_id: actor_id,
                     position: cursor,
-                    hit_terrain: Terrain::Crate,
+                    hit_terrain: current_terrain,
                     hit_player: None,
                 };
                 events::EventTreePipeline::default().run(state, impact_trigger)?;
-                if !piercing {
-                    break;
-                }
+                break;
+            } else {
+                // Normal bullet cannot destroy hardness > 1 (e.g. Wall) and stops
+                hit_something = true;
+                break;
             }
-            _ => {}
         }
 
         if state.terrain[terrain_index] == Terrain::Water
@@ -1559,5 +1595,90 @@ mod tests {
         assert_eq!(outcome.events_resolved, 1);
         assert_eq!(state.weather, Weather::Heatwave);
         assert_eq!(state.terrain[ice_idx], Terrain::Water);
+    }
+
+    #[test]
+    fn test_normal_bullet_cannot_destroy_wall() {
+        let mut state = GameEngine::create_game(test_config(42)).expect("game");
+        let p0_pos = Position { x: 1, y: 1 };
+        let wall_pos = Position { x: 1, y: 2 };
+        let target_pos = Position { x: 1, y: 3 };
+
+        state.players[0].position = Some(p0_pos);
+        state.players[1].position = Some(target_pos);
+
+        let wall_idx = map_index(wall_pos, state.map_size).unwrap();
+        state.terrain[wall_idx] = Terrain::Wall;
+
+        state.players[0].consecutive_shots = 0;
+        state.rng.combat = 1;
+
+        apply_shot(&mut state, 0, Direction::Down, false, false).expect("shot");
+
+        assert_eq!(state.terrain[wall_idx], Terrain::Wall);
+        assert_eq!(state.players[1].status, PlayerStatus::Alive);
+    }
+
+    #[test]
+    fn test_piercing_bullet_destroys_wall_and_hits_target_behind() {
+        let mut state = GameEngine::create_game(test_config(42)).expect("game");
+        let p0_pos = Position { x: 1, y: 1 };
+        let wall_pos = Position { x: 1, y: 2 };
+        let target_pos = Position { x: 1, y: 3 };
+
+        state.players[0].position = Some(p0_pos);
+        state.players[1].position = Some(target_pos);
+
+        let wall_idx = map_index(wall_pos, state.map_size).unwrap();
+        state.terrain[wall_idx] = Terrain::Wall;
+
+        state.players[0].consecutive_shots = 0;
+        state.rng.combat = 1;
+
+        apply_shot(&mut state, 0, Direction::Down, true, false).expect("shot");
+
+        assert_eq!(state.terrain[wall_idx], Terrain::Empty);
+        assert_eq!(state.players[1].status, PlayerStatus::Eliminated);
+    }
+
+    #[test]
+    fn test_bullet_does_not_destroy_underground_mine() {
+        let mut state = GameEngine::create_game(test_config(42)).expect("game");
+        let p0_pos = Position { x: 1, y: 1 };
+        let mine_pos = Position { x: 1, y: 2 };
+
+        state.players[0].position = Some(p0_pos);
+        let mine_idx = map_index(mine_pos, state.map_size).unwrap();
+        state.terrain[mine_idx] = Terrain::Mine;
+
+        state.players[0].consecutive_shots = 0;
+        state.rng.combat = 1;
+
+        apply_shot(&mut state, 0, Direction::Down, true, false).expect("shot");
+
+        assert_eq!(state.terrain[mine_idx], Terrain::Mine);
+    }
+
+    #[test]
+    fn test_normal_bullet_destroys_crate_and_stops() {
+        let mut state = GameEngine::create_game(test_config(42)).expect("game");
+        let p0_pos = Position { x: 1, y: 1 };
+        let crate_pos = Position { x: 1, y: 2 };
+        let target_pos = Position { x: 1, y: 3 };
+
+        state.players[0].position = Some(p0_pos);
+        state.players[1].position = Some(target_pos);
+
+        let crate_idx = map_index(crate_pos, state.map_size).unwrap();
+        state.terrain[crate_idx] = Terrain::Crate;
+
+        state.players[0].consecutive_shots = 0;
+        state.rng.combat = 1;
+
+        apply_shot(&mut state, 0, Direction::Down, false, false).expect("shot");
+
+        // Crate is destroyed (no longer Crate, could be Empty or reveal a surprise mine/medkit)
+        assert_ne!(state.terrain[crate_idx], Terrain::Crate);
+        assert_eq!(state.players[1].status, PlayerStatus::Alive);
     }
 }

@@ -198,6 +198,148 @@ pub enum Terrain {
     Ice,
 }
 
+/// Placement layer or elevation of a terrain type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerrainLayer {
+    /// Above the ground (e.g. wall, crate, ice, empty).
+    AboveGround,
+    /// Below ground surface (e.g. buried landmine).
+    Underground,
+    /// Both above and below ground (e.g. deep water basin).
+    AboveAndBelow,
+    /// Special tactical or item elevation.
+    Special,
+}
+
+impl TerrainLayer {
+    /// Human-readable Chinese label for the placement layer.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::AboveGround => "地上",
+            Self::Underground => "地下",
+            Self::AboveAndBelow => "地上且地下",
+            Self::Special => "特殊",
+        }
+    }
+}
+
+/// Static mechanical attributes and destruction properties of a terrain type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerrainProperties {
+    /// Associated terrain enum.
+    pub terrain: Terrain,
+    /// Chinese display name.
+    pub name: String,
+    /// Map symbol.
+    pub symbol: String,
+    /// Layer position: 地上 / 地下 / 地上且地下 / 特殊.
+    pub layer: TerrainLayer,
+    /// Hardness rating (e.g. 1 for crate, 2 for wall) or None.
+    pub hardness: Option<u32>,
+    /// Target terrain when destroyed, or None if indestructible.
+    pub transform_on_destroy: Option<Terrain>,
+    /// Detailed description and tactical interaction rules.
+    pub description: String,
+}
+
+impl Terrain {
+    /// Returns the static mechanical and tactical properties for this terrain type.
+    #[must_use]
+    pub fn properties(self) -> TerrainProperties {
+        match self {
+            Self::Empty => TerrainProperties {
+                terrain: Self::Empty,
+                name: "空地".to_string(),
+                symbol: String::new(),
+                layer: TerrainLayer::AboveGround,
+                hardness: None,
+                transform_on_destroy: None,
+                description: "平整坚实的常规地面，无移动阻碍与特殊物理效果。".to_string(),
+            },
+            Self::Wall => TerrainProperties {
+                terrain: Self::Wall,
+                name: "墙体".to_string(),
+                symbol: "▤".to_string(),
+                layer: TerrainLayer::AboveGround,
+                hardness: Some(2),
+                transform_on_destroy: Some(Self::Empty),
+                description: "坚硬砖石掩体，阻挡角色移动与普通弹道。普通子弹无法击穿；高温穿甲弹可直接击碎并贯穿继续射击。撞击时有极高概率致死。".to_string(),
+            },
+            Self::Crate => TerrainProperties {
+                terrain: Self::Crate,
+                name: "木箱".to_string(),
+                symbol: "▦".to_string(),
+                layer: TerrainLayer::AboveGround,
+                hardness: Some(1),
+                transform_on_destroy: Some(Self::Empty),
+                description: "轻质木制掩体，阻挡角色移动。普通子弹可击碎破坏后停下；穿甲弹击碎后可继续贯穿前行。".to_string(),
+            },
+            Self::Water => TerrainProperties {
+                terrain: Self::Water,
+                name: "水域".to_string(),
+                symbol: "≈".to_string(),
+                layer: TerrainLayer::AboveAndBelow,
+                hardness: None,
+                transform_on_destroy: None,
+                description: "低洼深水区域，移动涉入时会遭受深水阻滞。若连续停留两回合将溺水淘汰。弹道直接掠过不受阻挡。暴风雪天气下相变为冰面。".to_string(),
+            },
+            Self::HighGround => TerrainProperties {
+                terrain: Self::HighGround,
+                name: "高地".to_string(),
+                symbol: "△".to_string(),
+                layer: TerrainLayer::Special,
+                hardness: None,
+                transform_on_destroy: None,
+                description: "开阔的战术制高点，居高临下视野极佳。占据高地射击时有效射程额外增加 1 格。弹道可掠过高地。".to_string(),
+            },
+            Self::Mine => TerrainProperties {
+                terrain: Self::Mine,
+                name: "地雷".to_string(),
+                symbol: "◆".to_string(),
+                layer: TerrainLayer::Underground,
+                hardness: None,
+                transform_on_destroy: None,
+                description: "埋伏于地表之下的烈性暗雷。子弹从上方空域飞过无法引爆或破坏；角色踏入进入生命周期检测，触发 85% 引爆或 10% 哑雷。".to_string(),
+            },
+            Self::Medkit => TerrainProperties {
+                terrain: Self::Medkit,
+                name: "护盾".to_string(),
+                symbol: "✚".to_string(),
+                layer: TerrainLayer::Special,
+                hardness: None,
+                transform_on_destroy: None,
+                description: "散落的单兵便携充能护盾补给。角色踏入时拾取激活护盾，可完全抵消一次致命伤害；拾取后变为空地。".to_string(),
+            },
+            Self::Ice => TerrainProperties {
+                terrain: Self::Ice,
+                name: "冰面".to_string(),
+                symbol: "❄".to_string(),
+                layer: TerrainLayer::AboveGround,
+                hardness: None,
+                transform_on_destroy: None,
+                description: "极度光滑的低温冰面，踏入极易触发滑行冲刺或失控打滑。离开冰面蹬地施力有 30% 概率震碎薄冰使其相变为深水。热浪下融化为水。".to_string(),
+            },
+        }
+    }
+
+    /// Returns the complete list of properties for all known terrains.
+    #[must_use]
+    pub fn all_properties() -> Vec<TerrainProperties> {
+        vec![
+            Self::Wall.properties(),
+            Self::Crate.properties(),
+            Self::Water.properties(),
+            Self::Ice.properties(),
+            Self::HighGround.properties(),
+            Self::Mine.properties(),
+            Self::Medkit.properties(),
+            Self::Empty.properties(),
+        ]
+    }
+}
+
 /// Whether a player is controlled by a person or the local random bot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

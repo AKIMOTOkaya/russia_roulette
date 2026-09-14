@@ -139,6 +139,7 @@
               <div class="board-heading">
                 <div><p class="section-number">02 / 桌面</p><h2 id="turn-title">等待行动</h2></div>
                 <div class="board-meta">
+                  <button class="icon-button terrain-board-btn" data-open-dialog="terrain-help-dialog" type="button" title="查看地图特殊地形属性图鉴与判定规则">📖 地形属性</button>
                   <button class="icon-button debug-board-btn" id="open-event-debug" type="button" title="打开事件系统调试窗口 (F2)">⚡ 事件调试 [F2]</button>
                   <div class="stalemate-badge hidden" id="stalemate-badge">🔥 僵局第 1 轮</div>
                   <div class="weather-badge" id="weather-badge">天气：晴朗</div>
@@ -148,7 +149,12 @@
               <div class="board-stage">
                 <div class="playfield">
                   <div class="board" id="board" aria-label="游戏地图"></div>
-                  <div class="legend"><span>▦ 木箱</span><span>≈ 水域</span><span>❄ 冰面</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span></div>
+                  <div class="legend">
+                    <div class="legend-items">
+                      <span>▦ 木箱</span><span>≈ 水域</span><span>❄ 冰面</span><span>△ 高地</span><span>✚ 护盾</span><span>◆ 地雷</span>
+                    </div>
+                    <button class="legend-help-btn" data-open-dialog="terrain-help-dialog" type="button" title="查看全部特殊地形属性与判定规则">📖 特殊地形属性</button>
+                  </div>
                 </div>
                 <aside class="controls">
                   <p class="section-number">03 / 行动</p>
@@ -253,6 +259,23 @@
       </div>
       <div class="debug-content-scroll" id="event-debug-content">
         <div class="debug-empty">暂无事件执行记录。进行移动、射击或进入第2回合时，触发树将在此处完整展示。</div>
+      </div>
+    </dialog>
+
+    <dialog class="modal terrain-modal" id="terrain-help-dialog">
+      <div class="modal-heading">
+        <div>
+          <p class="section-number">TERRAIN GUIDE / 地图图鉴</p>
+          <h2>特殊地形属性指南</h2>
+        </div>
+        <button class="modal-close" data-close-dialog type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="terrain-modal-meta">
+        <span>当前含有的在前 · 包含全部特殊地形属性规范</span>
+        <span class="terrain-stat" id="terrain-present-count">当前地图 0 种特殊地形</span>
+      </div>
+      <div class="terrain-modal-scroll" id="terrain-help-list">
+        <div class="debug-empty">加载中...</div>
       </div>
     </dialog>
 
