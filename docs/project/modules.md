@@ -5,7 +5,7 @@
 | **Cargo 包** | **Rust crate 名** | **状态** | **职责** | **允许依赖** |
 |---------------|-------------------|----------|----------|--------------|
 | `roulette-domain` | `roulette_domain` | MVP 已实现 | 可序列化的 Tab/房间/成员/玩家 ID、EventId、EventTier、Weather、冰面地形、房间视图、命令、分类记录、事件/戏剧化事件、通知、权威状态、事件诊断树流水（CandidateTrace、EventNodeTrace、PipelineTrace，含 is_lethal 与 stalemate_rounds 标定）、随机流、Web 视图及淘汰死因（含 Collision 猛烈撞墙）。 | `serde`；不依赖运行时。 |
-| `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、事件树 BFS 管线（`EventTreePipeline`）、事件定义索引库（`EventRegistry`）、多因素动态概率评估模型（`EventPool`，含 wall_crash 撞墙移动专属事件池、move_intent、致命暗雷引爆、跳弹折射击杀等物理与戏剧化效果）、环境天气与冰面相变、胜负和视图投影。 | `roulette-domain`。 |
+| `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、事件树 BFS 管线（`EventTreePipeline`）、事件定义索引库（`EventRegistry`）、多因素动态概率评估模型（`EventPool`，含 `wall_crash` 撞墙专属池、`move_intent` 纯操作位移池，以及独立的地形进入/离开生命周期事件池 `terrain_enter_*` 与 `terrain_exit_*`，支持地雷引爆/哑火、护盾装填、蹬冰碎裂化水与空地 99%~100% 高概率静默收敛）、环境天气与冰面相变、胜负和视图投影。 | `roulette-domain`。 |
 | `roulette-host` | `roulette_host` | 本地多房间 MVP | 内存大厅、五位房间号、Tab 身份、房间密码、房主权限/转让、成员和 Bot 管理、活动超时、revision 校验及 Bot 调度。 | `roulette-core`、`roulette-domain`。 |
 | `roulette-backend` | 不作为库导出 | 本地 Web MVP | 多房间 HTTP API、嵌入 Web 资源、创始人临时认证、局域网访问软开关和进程生命周期。 | `roulette-host`、`roulette-domain`、Axum、Tokio。 |
 

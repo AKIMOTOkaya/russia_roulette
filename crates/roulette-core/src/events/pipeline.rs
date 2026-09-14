@@ -801,6 +801,131 @@ fn apply_wall_breakthrough(
     }
 }
 
+fn apply_mine_detonation(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+    outcome: &mut PipelineOutcome,
+) -> Result<String, CoreError> {
+    if let TriggerPoint::TerrainEntered { actor_id, to, .. } = trigger {
+        let to_pos = *to;
+        let t_idx = crate::map_index(to_pos, state.map_size)?;
+        if state.terrain[t_idx] == Terrain::Mine {
+            state.terrain[t_idx] = Terrain::Empty;
+            crate::push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position: to_pos,
+                    from: Terrain::Mine,
+                    to: Terrain::Empty,
+                },
+            )?;
+        }
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        let eliminated = crate::eliminate_player(
+            state,
+            actor_idx,
+            roulette_domain::EliminationCause::Mine,
+            None,
+            true,
+        )?;
+        if eliminated {
+            outcome.action_canceled = true;
+            Ok(format!(
+                "踩中暗雷引信，轰然引爆！玩家 P{} 当场出局！",
+                actor_id.0
+            ))
+        } else {
+            Ok(format!(
+                "踩中暗雷引信，轰然引爆！玩家 P{} 的护盾抵挡了致命爆炸并碎裂！",
+                actor_id.0
+            ))
+        }
+    } else {
+        Ok("地雷轰然引爆".to_string())
+    }
+}
+
+fn apply_mine_dud(state: &mut GameState, trigger: &TriggerPoint) -> Result<String, CoreError> {
+    if let TriggerPoint::TerrainEntered { to, .. } = trigger {
+        let to_pos = *to;
+        let t_idx = crate::map_index(to_pos, state.map_size)?;
+        if state.terrain[t_idx] == Terrain::Mine {
+            state.terrain[t_idx] = Terrain::Empty;
+            crate::push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position: to_pos,
+                    from: Terrain::Mine,
+                    to: Terrain::Empty,
+                },
+            )?;
+        }
+        Ok("脚下暗雷发出轻微咔哒声，引信受潮失效，暗雷已解除！".to_string())
+    } else {
+        Ok("暗雷哑火失效".to_string())
+    }
+}
+
+fn apply_medkit_collect(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+) -> Result<String, CoreError> {
+    if let TriggerPoint::TerrainEntered { actor_id, to, .. } = trigger {
+        let to_pos = *to;
+        let t_idx = crate::map_index(to_pos, state.map_size)?;
+        let actor_idx = crate::player_index(state, *actor_id)?;
+        state.players[actor_idx].has_shield = true;
+        if state.terrain[t_idx] == Terrain::Medkit {
+            state.terrain[t_idx] = Terrain::Empty;
+            crate::push_event(
+                state,
+                GameEvent::ItemCollected {
+                    player_id: *actor_id,
+                    item: Terrain::Medkit,
+                },
+            )?;
+            crate::push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position: to_pos,
+                    from: Terrain::Medkit,
+                    to: Terrain::Empty,
+                },
+            )?;
+        }
+        Ok(format!(
+            "玩家 P{} 拾取战术护盾模块，能量护盾启动并包裹全身！",
+            actor_id.0
+        ))
+    } else {
+        Ok("护盾模块已拾取".to_string())
+    }
+}
+
+fn apply_ice_exit_crack(
+    state: &mut GameState,
+    trigger: &TriggerPoint,
+) -> Result<String, CoreError> {
+    if let TriggerPoint::TerrainExited { from, .. } = trigger {
+        let from_pos = *from;
+        let from_idx = crate::map_index(from_pos, state.map_size)?;
+        if state.terrain[from_idx] == Terrain::Ice {
+            state.terrain[from_idx] = Terrain::Water;
+            crate::push_event(
+                state,
+                GameEvent::TerrainChanged {
+                    position: from_pos,
+                    from: Terrain::Ice,
+                    to: Terrain::Water,
+                },
+            )?;
+            return Ok("后蹬蹬踏发力，身后薄冰应声碎裂塌陷为水域！".to_string());
+        }
+    }
+    Ok("薄冰受到震荡".to_string())
+}
+
+#[allow(clippy::too_many_lines)]
 fn apply_event_effect(
     state: &mut GameState,
     event_id: &str,
@@ -894,6 +1019,54 @@ fn apply_event_effect(
             let desc = format!("木箱破裂四向飞溅，波及周围 {} 处目标", secondary.len());
             Ok((secondary, desc))
         }
+        "evt_pebble_kick" => Ok((
+            Vec::new(),
+            "脚尖碰落了一枚小碎石，骨碌碌滚向远方。".to_string(),
+        )),
+        "evt_water_bogged_down" => {
+            if let TriggerPoint::TerrainEntered { actor_id, .. } = trigger
+                && let Ok(actor_idx) = crate::player_index(state, *actor_id)
+            {
+                state.players[actor_idx].water_turns =
+                    state.players[actor_idx].water_turns.saturating_add(1);
+            }
+            Ok((
+                Vec::new(),
+                "深水漫过膝盖，水流与淤泥拖拽着脚步，行动受到拖延。".to_string(),
+            ))
+        }
+        "evt_water_splash" => Ok((
+            Vec::new(),
+            "重重踩入水洼溅起大片水花，暴露了移动踪迹！".to_string(),
+        )),
+        "evt_high_ground_vantage" => Ok((
+            Vec::new(),
+            "居高临下俯瞰全场，开阔的视野带来了极佳的心理优势！".to_string(),
+        )),
+        "evt_rockslide_tumble" => Ok((
+            Vec::new(),
+            "高地陡坡边缘风化松动，落石滑落让人重心微晃。".to_string(),
+        )),
+        "evt_mine_detonation" => {
+            let desc = apply_mine_detonation(state, trigger, outcome)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_mine_dud" => {
+            let desc = apply_mine_dud(state, trigger)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_medkit_collect" => {
+            let desc = apply_medkit_collect(state, trigger)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_ice_exit_crack" => {
+            let desc = apply_ice_exit_crack(state, trigger)?;
+            Ok((Vec::new(), desc))
+        }
+        "evt_water_exit_surge" => {
+            Ok((Vec::new(), "破开水流带起大片水花登上干燥地面。".to_string()))
+        }
+        "evt_high_ground_leap" => Ok((Vec::new(), "居高临下一跃而下，迅捷落入低地。".to_string())),
         "evt_splinter_scratch" => Ok((Vec::new(), "飞屑划伤目标并造成微小冲击".to_string())),
         "evt_dust_settles" => Ok((Vec::new(), "激荡的冲击波消散，烟尘落定".to_string())),
         _ => Ok((Vec::new(), "事件已结算".to_string())),

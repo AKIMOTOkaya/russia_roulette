@@ -38,6 +38,19 @@ pub enum TriggerPoint {
         /// Movement direction.
         direction: Direction,
     },
+    /// A player is exiting a terrain cell.
+    TerrainExited {
+        /// Moving player.
+        actor_id: PlayerId,
+        /// Previous position.
+        from: Position,
+        /// Landing position.
+        to: Position,
+        /// Terrain of exiting cell.
+        terrain: Terrain,
+        /// Movement direction.
+        direction: Direction,
+    },
     /// A shot bullet collided with an obstacle, water, or player.
     ProjectileImpact {
         /// Shooting player.
@@ -66,9 +79,9 @@ impl TriggerPoint {
     pub fn actor_id(&self) -> Option<PlayerId> {
         match self {
             Self::TurnStart { player_id } => Some(*player_id),
-            Self::ActionIntent { actor_id, .. } | Self::TerrainEntered { actor_id, .. } => {
-                Some(*actor_id)
-            }
+            Self::ActionIntent { actor_id, .. }
+            | Self::TerrainEntered { actor_id, .. }
+            | Self::TerrainExited { actor_id, .. } => Some(*actor_id),
             Self::ProjectileImpact { shooter_id, .. } => Some(*shooter_id),
             Self::SecondaryTrigger { actor_id, .. } => *actor_id,
             Self::RoundStart { .. } => None,
@@ -80,6 +93,7 @@ impl TriggerPoint {
     pub fn position(&self) -> Option<Position> {
         match self {
             Self::TerrainEntered { to, .. } => Some(*to),
+            Self::TerrainExited { from, .. } => Some(*from),
             Self::ProjectileImpact { position, .. } => Some(*position),
             Self::SecondaryTrigger { position, .. } => *position,
             _ => None,
@@ -111,6 +125,17 @@ impl TriggerPoint {
                 format!(
                     "玩家 P{} 踏入 {:?} ({}, {})",
                     actor_id.0, terrain, to.x, to.y
+                )
+            }
+            Self::TerrainExited {
+                actor_id,
+                from,
+                terrain,
+                ..
+            } => {
+                format!(
+                    "玩家 P{} 离开 {:?} ({}, {})",
+                    actor_id.0, terrain, from.x, from.y
                 )
             }
             Self::ProjectileImpact {
@@ -385,10 +410,9 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                     Some(EventPool::new(
                         "move_intent",
                         vec![
-                            PoolEntry::normal("evt_sprint_dash", 30),
-                            PoolEntry::normal("evt_spatial_swap", 15),
-                            PoolEntry::lethal("evt_sudden_landmine", 5, 18),
-                            PoolEntry::normal("evt_stumble_trip", 4),
+                            PoolEntry::normal("evt_sprint_dash", 35),
+                            PoolEntry::normal("evt_spatial_swap", 20),
+                            PoolEntry::normal("evt_stumble_trip", 5),
                             PoolEntry::dampener("evt_nothing_happens", 6, 45),
                         ],
                     ))
@@ -396,17 +420,89 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
             }
             _ => None,
         },
-        TriggerPoint::TerrainEntered {
-            terrain: Terrain::Ice,
-            ..
-        } => Some(EventPool::new(
-            "ice_terrain_impact",
-            vec![
-                PoolEntry::normal("evt_ice_slide", 50),
-                PoolEntry::lethal("evt_ice_crack_collapse", 25, 15),
-                PoolEntry::dampener("evt_dust_settles", 10, 40),
-            ],
-        )),
+        TriggerPoint::TerrainEntered { terrain, .. } => match terrain {
+            Terrain::Empty => Some(EventPool::new(
+                "terrain_enter_empty",
+                vec![
+                    PoolEntry::normal("evt_pebble_kick", 1),
+                    PoolEntry::dampener("evt_nothing_happens", 99, 50),
+                ],
+            )),
+            Terrain::Ice => Some(EventPool::new(
+                "terrain_enter_ice",
+                vec![
+                    PoolEntry::normal("evt_ice_slide", 45),
+                    PoolEntry::lethal("evt_ice_crack_collapse", 25, 15),
+                    PoolEntry::dampener("evt_nothing_happens", 30, 40),
+                ],
+            )),
+            Terrain::Water => Some(EventPool::new(
+                "terrain_enter_water",
+                vec![
+                    PoolEntry::normal("evt_water_bogged_down", 50),
+                    PoolEntry::normal("evt_water_splash", 20),
+                    PoolEntry::dampener("evt_nothing_happens", 30, 40),
+                ],
+            )),
+            Terrain::HighGround => Some(EventPool::new(
+                "terrain_enter_high_ground",
+                vec![
+                    PoolEntry::normal("evt_high_ground_vantage", 40),
+                    PoolEntry::normal("evt_rockslide_tumble", 20),
+                    PoolEntry::dampener("evt_nothing_happens", 40, 40),
+                ],
+            )),
+            Terrain::Mine => Some(EventPool::new(
+                "terrain_enter_mine",
+                vec![
+                    PoolEntry::lethal("evt_mine_detonation", 85, 20),
+                    PoolEntry::normal("evt_mine_dud", 10),
+                    PoolEntry::dampener("evt_nothing_happens", 5, 40),
+                ],
+            )),
+            Terrain::Medkit => Some(EventPool::new(
+                "terrain_enter_medkit",
+                vec![
+                    PoolEntry::normal("evt_medkit_collect", 95),
+                    PoolEntry::dampener("evt_nothing_happens", 5, 40),
+                ],
+            )),
+            _ => Some(EventPool::new(
+                "terrain_enter_neutral",
+                vec![PoolEntry::dampener("evt_nothing_happens", 100, 50)],
+            )),
+        },
+        TriggerPoint::TerrainExited { terrain, .. } => match terrain {
+            Terrain::Empty => Some(EventPool::new(
+                "terrain_exit_empty",
+                vec![PoolEntry::dampener("evt_nothing_happens", 100, 50)],
+            )),
+            Terrain::Ice => Some(EventPool::new(
+                "terrain_exit_ice",
+                vec![
+                    PoolEntry::normal("evt_ice_exit_crack", 30),
+                    PoolEntry::dampener("evt_nothing_happens", 70, 50),
+                ],
+            )),
+            Terrain::Water => Some(EventPool::new(
+                "terrain_exit_water",
+                vec![
+                    PoolEntry::normal("evt_water_exit_surge", 30),
+                    PoolEntry::dampener("evt_nothing_happens", 70, 50),
+                ],
+            )),
+            Terrain::HighGround => Some(EventPool::new(
+                "terrain_exit_high_ground",
+                vec![
+                    PoolEntry::normal("evt_high_ground_leap", 30),
+                    PoolEntry::dampener("evt_nothing_happens", 70, 50),
+                ],
+            )),
+            _ => Some(EventPool::new(
+                "terrain_exit_neutral",
+                vec![PoolEntry::dampener("evt_nothing_happens", 100, 50)],
+            )),
+        },
         TriggerPoint::ProjectileImpact {
             hit_terrain: Terrain::Crate,
             ..

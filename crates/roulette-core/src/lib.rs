@@ -445,19 +445,36 @@ fn complete_move_step(
     direction: Direction,
 ) -> Result<(), CoreError> {
     let actor_id = state.players[actor_index].id;
+    let from_terrain = state.terrain[map_index(from, state.map_size)?];
+
+    // 1. TerrainExited check
+    let exit_trigger = events::TriggerPoint::TerrainExited {
+        actor_id,
+        from,
+        to,
+        terrain: from_terrain,
+        direction,
+    };
+    let exit_outcome = events::EventTreePipeline::default().run(state, exit_trigger)?;
+    if state.players[actor_index].status != PlayerStatus::Alive || exit_outcome.action_canceled {
+        return Ok(());
+    }
+
+    // 2. Position update and moved event
     state.players[actor_index].position = Some(to);
     push_event(state, GameEvent::Moved { actor_id, from, to })?;
-    resolve_landing_terrain(state, actor_index, to)?;
-    if state.terrain[map_index(to, state.map_size)?] == Terrain::Ice {
-        let ice_trigger = events::TriggerPoint::TerrainEntered {
-            actor_id,
-            from,
-            to,
-            terrain: Terrain::Ice,
-            direction,
-        };
-        events::EventTreePipeline::default().run(state, ice_trigger)?;
-    }
+
+    // 3. TerrainEntered check
+    let to_terrain = state.terrain[map_index(to, state.map_size)?];
+    let enter_trigger = events::TriggerPoint::TerrainEntered {
+        actor_id,
+        from,
+        to,
+        terrain: to_terrain,
+        direction,
+    };
+    events::EventTreePipeline::default().run(state, enter_trigger)?;
+
     Ok(())
 }
 
@@ -1316,6 +1333,113 @@ mod tests {
     }
 
     #[test]
+    fn test_empty_terrain_has_high_nothing_happens_rate() {
+        use crate::events::{TriggerPoint, resolve_pool};
+
+        let state = GameEngine::create_game(test_config(55)).expect("game");
+        let enter_trigger = TriggerPoint::TerrainEntered {
+            actor_id: state.players[0].id,
+            from: Position { x: 1, y: 1 },
+            to: Position { x: 1, y: 2 },
+            terrain: Terrain::Empty,
+            direction: Direction::Down,
+        };
+        let pool = resolve_pool(&enter_trigger, &state).expect("pool");
+        assert_eq!(pool.name, "terrain_enter_empty");
+        let mut rng = 123;
+        let (_, _, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
+        let nothing_cand = candidates
+            .iter()
+            .find(|c| c.event_id.0 == "evt_nothing_happens")
+            .expect("nothing_happens");
+        assert_eq!(nothing_cand.base_weight, 99);
+
+        let exit_trigger = TriggerPoint::TerrainExited {
+            actor_id: state.players[0].id,
+            from: Position { x: 1, y: 1 },
+            to: Position { x: 1, y: 2 },
+            terrain: Terrain::Empty,
+            direction: Direction::Down,
+        };
+        let exit_pool = resolve_pool(&exit_trigger, &state).expect("exit pool");
+        assert_eq!(exit_pool.name, "terrain_exit_empty");
+        let (_, _, _, exit_cands) = exit_pool.roll_with_trace(0, 0, &mut rng);
+        let exit_nothing = exit_cands
+            .iter()
+            .find(|c| c.event_id.0 == "evt_nothing_happens")
+            .expect("nothing_happens");
+        assert_eq!(exit_nothing.probability_permille, 1000);
+    }
+
+    #[test]
+    fn test_mine_terrain_enter_triggers_detonation_or_dud() {
+        use crate::events::{TriggerPoint, resolve_pool};
+
+        let mut state = GameEngine::create_game(test_config(99)).expect("game");
+        let mine_pos = Position { x: 2, y: 2 };
+        let mine_idx = map_index(mine_pos, state.map_size).unwrap();
+        state.terrain[mine_idx] = Terrain::Mine;
+
+        let enter_trigger = TriggerPoint::TerrainEntered {
+            actor_id: state.players[0].id,
+            from: Position { x: 2, y: 1 },
+            to: mine_pos,
+            terrain: Terrain::Mine,
+            direction: Direction::Down,
+        };
+        let pool = resolve_pool(&enter_trigger, &state).expect("pool");
+        assert_eq!(pool.name, "terrain_enter_mine");
+
+        let mut rng = 42;
+        let (_, _, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
+        let det_cand = candidates
+            .iter()
+            .find(|c| c.event_id.0 == "evt_mine_detonation")
+            .expect("det");
+        assert!(det_cand.is_lethal);
+        assert!(det_cand.probability_permille >= 800);
+    }
+
+    #[test]
+    fn test_terrain_exited_and_entered_lifecycle() {
+        let mut state = GameEngine::create_game(test_config(101)).expect("game");
+        let p0_pos = state.players[0].position.unwrap();
+        let (dir, target) = [
+            Direction::Down,
+            Direction::Up,
+            Direction::Right,
+            Direction::Left,
+        ]
+        .into_iter()
+        .find_map(|d| {
+            let t = crate::step_position(p0_pos, d, state.map_size)?;
+            Some((d, t))
+        })
+        .expect("valid target");
+        let target_idx = map_index(target, state.map_size).unwrap();
+        state.terrain[target_idx] = Terrain::Empty;
+
+        // Perform move step
+        complete_move_step(&mut state, 0, p0_pos, target, dir).expect("move step");
+        assert_eq!(state.players[0].position, Some(target));
+
+        // Traces should record TerrainExited and TerrainEntered
+        let trace_descs: Vec<&str> = state
+            .event_traces
+            .iter()
+            .map(|t| t.root_trigger_desc.as_str())
+            .collect();
+        assert!(
+            trace_descs.iter().any(|d| d.contains("离开")),
+            "should have a TerrainExited trace: {trace_descs:?}"
+        );
+        assert!(
+            trace_descs.iter().any(|d| d.contains("踏入")),
+            "should have a TerrainEntered trace: {trace_descs:?}"
+        );
+    }
+
+    #[test]
     fn event_pipeline_blizzard_freezes_water_to_ice() {
         use crate::events::{EventTreePipeline, TriggerPoint};
 
@@ -1386,7 +1510,7 @@ mod tests {
         );
         assert!(!state.event_traces.is_empty());
         let last_trace = state.event_traces.last().unwrap();
-        assert_eq!(last_trace.nodes[0].pool_name, "ice_terrain_impact");
+        assert_eq!(last_trace.nodes[0].pool_name, "terrain_enter_ice");
         assert!(!last_trace.nodes[0].candidates.is_empty());
     }
 
