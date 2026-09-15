@@ -482,7 +482,6 @@ function renderGame() {
         : `${active?.name || "其他玩家"} 行动中`;
     }
   }
-  renderPlayerList(game);
   updateControls();
   renderEventDebugTo(elements.sidebar_event_debug_content, elements.sidebar_trace_count, true);
   if (elements.event_debug_modal?.open) {
@@ -628,7 +627,7 @@ function renderRecords(game) {
 
     if (turn.items.length === 0) {
       const emptyRow = document.createElement("div");
-      emptyRow.className = "turn-record-row";
+      emptyRow.className = "turn-record-empty";
       emptyRow.textContent = "等待执行行动...";
       body.append(emptyRow);
     } else {

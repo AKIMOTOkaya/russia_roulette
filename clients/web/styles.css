@@ -401,6 +401,13 @@ input::placeholder { color: #555b5d; }
   flex-direction: column;
   gap: 4px;
 }
+.turn-record-empty {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  padding: 4px 0;
+  font-style: italic;
+}
 .turn-record-row {
   display: grid;
   grid-template-columns: 38px 1fr auto;
