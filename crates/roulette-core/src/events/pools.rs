@@ -465,8 +465,8 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                     PoolEntry::normal("evt_disoriented_reverse_shot", 15),
                     PoolEntry::lethal_potential_multi("evt_piercing_slug", 20, 20, 250),
                     PoolEntry::lethal("evt_ricochet_deadly", 15, 45),
-                    PoolEntry::dampener("evt_revolver_misfire", 5, 25),
-                    PoolEntry::dampener("evt_nothing_happens", 5, 45),
+                    PoolEntry::dampener("evt_revolver_misfire", 15, 25),
+                    PoolEntry::dampener("evt_nothing_happens", 15, 45),
                 ],
             )),
             PlayerCommand::Move { direction } => {

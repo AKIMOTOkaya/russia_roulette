@@ -699,31 +699,6 @@ fn apply_shot(
     ricochet: bool,
 ) -> Result<(), CoreError> {
     let actor_id = state.players[actor_index].id;
-    state.players[actor_index].consecutive_shots = state.players[actor_index]
-        .consecutive_shots
-        .saturating_add(1);
-    if state.players[actor_index].consecutive_shots >= 3 {
-        state.players[actor_index].consecutive_shots = 0;
-        push_event(
-            state,
-            GameEvent::EmptyChamber {
-                actor_id,
-                forced: true,
-            },
-        )?;
-        return Ok(());
-    }
-    if random_index(&mut state.rng.combat, 4)? == 0 {
-        push_event(
-            state,
-            GameEvent::EmptyChamber {
-                actor_id,
-                forced: false,
-            },
-        )?;
-        return Ok(());
-    }
-
     let origin = state.players[actor_index]
         .position
         .ok_or(CoreError::InvalidState("living actor has no position"))?;
@@ -1177,9 +1152,32 @@ mod tests {
     }
 
     #[test]
-    fn third_consecutive_shot_is_forced_empty() {
-        let mut state = GameEngine::create_game(test_config(11)).expect("game");
-        state.players[0].consecutive_shots = 2;
+    fn test_unified_event_misfire_cancels_shot_cleanly() {
+        use crate::events::{EventTreePipeline, TriggerPoint};
+
+        let mut found_misfire_seed = None;
+        for seed in 0..100 {
+            let mut state = GameEngine::create_game(test_config(seed)).expect("game");
+            let trigger = TriggerPoint::ActionIntent {
+                actor_id: PlayerId(1),
+                command: PlayerCommand::Shoot {
+                    direction: Direction::Up,
+                },
+            };
+            if let Ok(outcome) = EventTreePipeline::default().run(&mut state, trigger)
+                && outcome.action_canceled
+            {
+                found_misfire_seed = Some(seed);
+                break;
+            }
+        }
+
+        let seed = found_misfire_seed.expect("found seed with misfire");
+        let mut state = GameEngine::create_game(test_config(seed)).expect("game");
+        let p0_pos = Position { x: 2, y: 3 };
+        let p1_pos = Position { x: 2, y: 1 };
+        state.players[0].position = Some(p0_pos);
+        state.players[1].position = Some(p1_pos);
         let records = GameEngine::apply_command(
             &mut state,
             PlayerId(1),
@@ -1187,19 +1185,49 @@ mod tests {
                 direction: Direction::Up,
             },
         )
-        .expect("shot");
-        assert!(records.iter().any(|record| matches!(
-            record,
-            GameRecord {
-                content: GameRecordContent::Event {
-                    event: GameEvent::EmptyChamber {
-                        actor_id: PlayerId(1),
-                        forced: true
-                    }
-                },
-                ..
-            }
-        )));
+        .expect("shoot command");
+
+        // Target must remain alive because misfire canceled the shot
+        assert_eq!(state.players[1].status, PlayerStatus::Alive);
+        assert!(records.iter().any(|record| {
+            matches!(
+                record,
+                GameRecord {
+                    content: GameRecordContent::Event {
+                        event: GameEvent::DramaticEvent {
+                            event_id,
+                            ..
+                        },
+                    },
+                    ..
+                } if event_id.0 == "evt_revolver_misfire"
+            )
+        }));
+    }
+
+    #[test]
+    fn test_shooting_has_no_hardcoded_chamber_cancellation() {
+        let mut state = GameEngine::create_game(test_config(11)).expect("game");
+        let p0_pos = Position { x: 1, y: 1 };
+        let p1_pos = Position { x: 4, y: 4 };
+        state.players[0].position = Some(p0_pos);
+        state.players[1].position = Some(p1_pos);
+
+        for _ in 0..10 {
+            apply_shot(&mut state, 0, Direction::Down, false, false).expect("shot fires");
+        }
+
+        assert!(!state.records.iter().any(|record| {
+            matches!(
+                record,
+                GameRecord {
+                    content: GameRecordContent::Event {
+                        event: GameEvent::EmptyChamber { .. }
+                    },
+                    ..
+                }
+            )
+        }));
     }
 
     #[test]
