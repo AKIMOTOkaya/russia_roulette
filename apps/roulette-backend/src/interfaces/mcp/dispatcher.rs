@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use roulette_domain::{PlayerCommand, TabId};
+use roulette_domain::{BotSetupAction, PlayerCommand, RoomMemberId, RoomPhase, TabId};
 use roulette_host::{CreateRoomConfig, GameService, JoinRoomConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, to_value};
@@ -87,8 +87,114 @@ impl McpDispatcher {
     /// # Errors
     ///
     /// Returns `McpError` if tool is unknown, parameters are invalid, or execution fails.
+    #[allow(clippy::too_many_lines)]
     pub fn dispatch(&self, tool_name: &str, arguments: &Value) -> Result<Value, McpError> {
         match tool_name {
+            "referee_list_rooms" => {
+                let phase: Option<RoomPhase> = arguments
+                    .get("filter_phase")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok());
+                let mut rooms = self
+                    .service
+                    .referee_list_rooms()
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                if let Some(p) = phase {
+                    rooms.retain(|r| r.phase == p);
+                }
+                to_value(rooms).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_inspect_room" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let view = self
+                    .service
+                    .referee_inspect_room(&room_id)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(view).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_create_room" => {
+                let room_name: String = parse_arg(arguments, "room_name")?;
+                let password: Option<String> = arguments
+                    .get("password")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                let initial_bots: usize = arguments
+                    .get("initial_bots")
+                    .and_then(Value::as_u64)
+                    .and_then(|n| usize::try_from(n).ok())
+                    .unwrap_or(0);
+
+                let view = self
+                    .service
+                    .referee_create_room(&room_name, password.as_deref(), initial_bots)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(view).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_setup_bots" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let action: BotSetupAction = parse_arg(arguments, "action")?;
+                let bot_member_id: Option<String> = arguments
+                    .get("bot_member_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
+                let expected_revision: u64 = parse_arg(arguments, "expected_revision")?;
+                let member_id = bot_member_id.map(RoomMemberId);
+
+                let view = self
+                    .service
+                    .referee_setup_bots(&room_id, action, member_id.as_ref(), expected_revision)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(view).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_start_match" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let seed: Option<u64> = arguments.get("seed").and_then(Value::as_u64);
+                let expected_revision: u64 = parse_arg(arguments, "expected_revision")?;
+                let idempotency_key: Option<&str> =
+                    arguments.get("idempotency_key").and_then(Value::as_str);
+
+                let view = self
+                    .service
+                    .referee_start_match(&room_id, seed, expected_revision, idempotency_key)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(view).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_step_bot" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let expected_revision: u64 = parse_arg(arguments, "expected_revision")?;
+                let idempotency_key: Option<&str> =
+                    arguments.get("idempotency_key").and_then(Value::as_str);
+
+                let result = self
+                    .service
+                    .referee_step_bot(&room_id, expected_revision, idempotency_key)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(result).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_force_command" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let expected_revision: u64 = parse_arg(arguments, "expected_revision")?;
+                let command: PlayerCommand = parse_arg(arguments, "command")?;
+                let idempotency_key: Option<&str> =
+                    arguments.get("idempotency_key").and_then(Value::as_str);
+
+                let result = self
+                    .service
+                    .referee_force_command(&room_id, expected_revision, command, idempotency_key)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(result).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_dissolve_room" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let result = self
+                    .service
+                    .referee_dissolve_room(&room_id)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                to_value(result).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "referee_query_rules" | "get_terrain_properties" => {
+                let rules = self.service.get_terrain_rules();
+                to_value(rules).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
             "list_lobby_rooms" => {
                 let tab_id: String = parse_arg(arguments, "tab_id")?;
                 let view = self
@@ -185,10 +291,6 @@ impl McpDispatcher {
                     .step_bot(&room_id, &TabId(tab_id), expected_revision)
                     .map_err(|e| McpError::execution_failed(e.to_string()))?;
                 to_value(view).map_err(|e| McpError::execution_failed(e.to_string()))
-            }
-            "get_terrain_properties" => {
-                let rules = self.service.get_terrain_rules();
-                to_value(rules).map_err(|e| McpError::execution_failed(e.to_string()))
             }
             unknown => Err(McpError::tool_not_found(unknown)),
         }

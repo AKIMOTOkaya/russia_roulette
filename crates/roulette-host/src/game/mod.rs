@@ -4,12 +4,13 @@
 
 pub mod member;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use roulette_core::{CoreError, GameEngine};
 use roulette_domain::{
-    CreateGameConfig, GameState, GameStatus, GameView, PlayerCommand, PlayerId, PlayerKind,
-    PlayerSetup, RoomId, RoomMemberId, RoomMemberView, RoomPhase, RoomSummary, RoomView, TabId,
+    BotSetupAction, CreateGameConfig, GameState, GameStatus, GameView, PlayerCommand, PlayerId,
+    PlayerKind, PlayerSetup, RefereeGameView, RefereeMemberView, RefereeRoomSummary,
+    RefereeRoomView, RoomId, RoomMemberId, RoomMemberView, RoomPhase, RoomSummary, RoomView, TabId,
 };
 
 use crate::error::HostError;
@@ -36,6 +37,8 @@ pub struct Game {
     pub match_session: Option<HostedMatch>,
     /// Monotonic counter for assigning bot names/IDs.
     pub next_bot_number: u32,
+    /// Whether this room is managed and arbitrated by a referee.
+    pub referee_managed: bool,
 }
 
 impl Game {
@@ -60,6 +63,42 @@ impl Game {
             phase: RoomPhase::Waiting,
             match_session: None,
             next_bot_number: 1,
+            referee_managed: false,
+        }
+    }
+
+    /// Creates a new referee-hosted room with pre-configured bot participants.
+    #[must_use]
+    pub fn new_referee(
+        id: RoomId,
+        name: String,
+        password: Option<String>,
+        initial_bots: usize,
+    ) -> Self {
+        let mut members = Vec::new();
+        let mut bot_number: u32 = 1;
+        let count = initial_bots.clamp(0, MAX_MEMBERS);
+        for _ in 0..count {
+            let member_id = RoomMemberId(format!("bot:{bot_number}"));
+            let member_name = format!("Bot {bot_number}");
+            members.push(RoomMember::bot(member_id, member_name));
+            bot_number = bot_number.saturating_add(1);
+        }
+        let owner_member_id = members.first().map_or_else(
+            || RoomMemberId("referee:host".to_string()),
+            |m| m.id.clone(),
+        );
+
+        Self {
+            id,
+            name,
+            password,
+            owner_member_id,
+            members,
+            phase: RoomPhase::Waiting,
+            match_session: None,
+            next_bot_number: bot_number,
+            referee_managed: true,
         }
     }
 
@@ -106,6 +145,52 @@ impl Game {
             capacity: MAX_MEMBERS,
             password_required: self.password.is_some(),
             is_member: self.has_tab(for_tab),
+        }
+    }
+
+    /// Generates a public room summary for referee discovery.
+    #[must_use]
+    pub fn referee_summary(&self) -> RefereeRoomSummary {
+        RefereeRoomSummary {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            phase: self.phase,
+            human_count: self.human_count(),
+            bot_count: self.bot_count(),
+            capacity: MAX_MEMBERS,
+            password_required: self.password.is_some(),
+            referee_managed: self.referee_managed,
+            current_revision: self.match_session.as_ref().map(|m| m.state.revision),
+        }
+    }
+
+    /// Renders the complete, unobstructed view for a referee.
+    #[must_use]
+    pub fn referee_view(&self, now: Instant, timeout: Duration) -> RefereeRoomView {
+        let game = self
+            .match_session
+            .as_ref()
+            .and_then(|m| m.referee_view().ok());
+
+        RefereeRoomView {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            phase: self.phase,
+            password: self.password.clone(),
+            referee_managed: self.referee_managed,
+            members: self
+                .members
+                .iter()
+                .map(|member| RefereeMemberView {
+                    id: member.id.clone(),
+                    name: member.name.clone(),
+                    kind: member.kind,
+                    is_owner: member.id == self.owner_member_id,
+                    player_id: member.player_id,
+                    is_connected: member.is_bot() || !member.is_stale(now, timeout),
+                })
+                .collect(),
+            game,
         }
     }
 
@@ -319,6 +404,139 @@ impl Game {
         self.view(tab_id)
     }
 
+    /// Configures bot seats via referee authority during Waiting phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if not in Waiting phase, room full, or target bot not found.
+    pub fn referee_setup_bots(
+        &mut self,
+        action: BotSetupAction,
+        bot_member_id: Option<&RoomMemberId>,
+        expected_revision: u64,
+    ) -> Result<(), HostError> {
+        let current_rev = self.current_revision();
+        if expected_revision != current_rev {
+            return Err(HostError::RevisionConflict {
+                expected: current_rev,
+                actual: expected_revision,
+            });
+        }
+        if self.phase != RoomPhase::Waiting {
+            return Err(HostError::RoomNotWaiting);
+        }
+        match action {
+            BotSetupAction::Add => {
+                if self.members.len() >= MAX_MEMBERS {
+                    return Err(HostError::RoomFull);
+                }
+                let bot_id = RoomMemberId(format!("bot:{}", self.next_bot_number));
+                let bot_name = format!("Bot {}", self.next_bot_number);
+                self.next_bot_number = self.next_bot_number.saturating_add(1);
+                self.members.push(RoomMember::bot(bot_id, bot_name));
+            }
+            BotSetupAction::Remove => {
+                let target_index = if let Some(id) = bot_member_id {
+                    self.members.iter().position(|m| m.id == *id && m.is_bot())
+                } else {
+                    self.members.iter().rposition(RoomMember::is_bot)
+                };
+                let Some(idx) = target_index else {
+                    return Err(HostError::InvalidMember);
+                };
+                let removed = self.members.remove(idx);
+                if removed.id == self.owner_member_id
+                    && let Some(first) = self.members.first()
+                {
+                    self.owner_member_id = first.id.clone();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Starts a deterministic match via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if not in Waiting phase, invalid member count, or revision conflict.
+    pub fn referee_start_match(
+        &mut self,
+        seed: u64,
+        expected_revision: u64,
+    ) -> Result<(), HostError> {
+        let current_rev = self.current_revision();
+        if expected_revision != current_rev {
+            return Err(HostError::RevisionConflict {
+                expected: current_rev,
+                actual: expected_revision,
+            });
+        }
+        if self.phase != RoomPhase::Waiting {
+            return Err(HostError::RoomNotWaiting);
+        }
+        if !(MIN_MEMBERS..=MAX_MEMBERS).contains(&self.members.len()) {
+            return Err(HostError::InvalidMemberCount);
+        }
+        let match_session = HostedMatch::new(seed, &mut self.members)?;
+        self.match_session = Some(match_session);
+        self.phase = RoomPhase::Playing;
+        Ok(())
+    }
+
+    /// Advances the active bot by one step via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, match not running, or if a human owns turn.
+    pub fn referee_step_bot(
+        &mut self,
+        expected_revision: u64,
+    ) -> Result<(Option<PlayerId>, String), HostError> {
+        if self.phase != RoomPhase::Playing {
+            return Err(HostError::MatchNotRunning);
+        }
+        let match_session = self
+            .match_session
+            .as_mut()
+            .ok_or(HostError::MatchNotRunning)?;
+        let result = match_session.referee_step_bot(expected_revision)?;
+        if matches!(match_session.state.status, GameStatus::Finished { .. }) {
+            self.phase = RoomPhase::Finished;
+        }
+        Ok(result)
+    }
+
+    /// Forces the current player turn to execute an action via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, match not running, or core rule violation.
+    pub fn referee_force_command(
+        &mut self,
+        expected_revision: u64,
+        command: PlayerCommand,
+    ) -> Result<(PlayerId, String), HostError> {
+        if self.phase != RoomPhase::Playing {
+            return Err(HostError::MatchNotRunning);
+        }
+        let match_session = self
+            .match_session
+            .as_mut()
+            .ok_or(HostError::MatchNotRunning)?;
+        let result = match_session.referee_force_command(expected_revision, command)?;
+        if matches!(match_session.state.status, GameStatus::Finished { .. }) {
+            self.phase = RoomPhase::Finished;
+        }
+        Ok(result)
+    }
+
+    /// Returns the current revision of the room's match session, or 0 if waiting.
+    #[must_use]
+    pub fn current_revision(&self) -> u64 {
+        self.match_session.as_ref().map_or(0, |m| m.state.revision)
+    }
+
     /// Removes a human tab. If playing, converts seat to bot takeover; otherwise removes.
     /// Returns whether any human members remain in the room.
     pub fn remove_tab(&mut self, tab_id: &TabId) -> bool {
@@ -503,5 +721,73 @@ impl HostedMatch {
         let command = GameEngine::choose_random_bot_command(&mut self.state, actor_id)?;
         GameEngine::apply_command(&mut self.state, actor_id, command)?;
         Ok(())
+    }
+
+    /// Projects the match state from a neutral, unobstructed referee perspective.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if projection fails.
+    pub fn referee_view(&self) -> Result<RefereeGameView, HostError> {
+        Ok(GameEngine::project_referee_view(&self.state)?)
+    }
+
+    /// Advances the active bot by one step via referee authority, returning the actor and action description.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, match not running, or if a human owns turn.
+    pub fn referee_step_bot(
+        &mut self,
+        expected_revision: u64,
+    ) -> Result<(Option<PlayerId>, String), HostError> {
+        if expected_revision != self.state.revision {
+            return Err(HostError::RevisionConflict {
+                expected: self.state.revision,
+                actual: expected_revision,
+            });
+        }
+        if !matches!(self.state.status, GameStatus::Running) {
+            return Err(HostError::MatchNotRunning);
+        }
+        let actor_id = GameEngine::current_player_id(&self.state)?;
+        let actor = self
+            .state
+            .players
+            .iter()
+            .find(|player| player.id == actor_id)
+            .ok_or(HostError::Core(CoreError::UnknownPlayer(actor_id)))?;
+        if actor.kind != PlayerKind::Bot {
+            return Err(HostError::BotDoesNotOwnTurn);
+        }
+        let command = GameEngine::choose_random_bot_command(&mut self.state, actor_id)?;
+        let desc = format!("Bot {actor_id:?} 执行了 {command:?}");
+        GameEngine::apply_command(&mut self.state, actor_id, command)?;
+        Ok((Some(actor_id), desc))
+    }
+
+    /// Forces the current player turn to execute an action via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, match not running, or core rule violation.
+    pub fn referee_force_command(
+        &mut self,
+        expected_revision: u64,
+        command: PlayerCommand,
+    ) -> Result<(PlayerId, String), HostError> {
+        if expected_revision != self.state.revision {
+            return Err(HostError::RevisionConflict {
+                expected: self.state.revision,
+                actual: expected_revision,
+            });
+        }
+        if !matches!(self.state.status, GameStatus::Running) {
+            return Err(HostError::MatchNotRunning);
+        }
+        let actor_id = GameEngine::current_player_id(&self.state)?;
+        let desc = format!("裁判强裁 Player {actor_id:?} 执行 {command:?}");
+        GameEngine::apply_command(&mut self.state, actor_id, command)?;
+        Ok((actor_id, desc))
     }
 }

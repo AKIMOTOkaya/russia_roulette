@@ -2,7 +2,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -10,7 +10,8 @@ use std::sync::{
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use roulette_domain::{
-    LobbyView, PlayerCommand, RoomMemberId, RoomView, TabId, Terrain, TerrainProperties,
+    BotSetupAction, LobbyView, PlayerCommand, RefereeDissolveResult, RefereeRoomSummary,
+    RefereeRoomView, RefereeStepResult, RoomMemberId, RoomView, TabId, Terrain, TerrainProperties,
 };
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +39,7 @@ pub struct GameService {
     founder_password: String,
     founder_tabs: Mutex<HashSet<TabId>>,
     lan_exposed: AtomicBool,
+    idempotency_cache: Mutex<HashMap<(String, String), (Instant, serde_json::Value)>>,
 }
 
 impl GameService {
@@ -50,6 +52,7 @@ impl GameService {
             founder_password,
             founder_tabs: Mutex::new(HashSet::new()),
             lan_exposed: AtomicBool::new(lan_exposed),
+            idempotency_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -297,6 +300,196 @@ impl GameService {
     #[must_use]
     pub fn get_terrain_rules(&self) -> Vec<TerrainProperties> {
         Terrain::all_properties()
+    }
+
+    fn check_idempotency<T: serde::de::DeserializeOwned>(
+        &self,
+        room_id: &str,
+        idempotency_key: Option<&str>,
+    ) -> Option<T> {
+        let key = idempotency_key?;
+        let cache = self.idempotency_cache.lock().ok()?;
+        let (ts, val) = cache.get(&(room_id.to_string(), key.to_string()))?;
+        if ts.elapsed() > Duration::from_mins(10) {
+            return None;
+        }
+        serde_json::from_value(val.clone()).ok()
+    }
+
+    fn record_idempotency<T: serde::Serialize>(
+        &self,
+        room_id: &str,
+        idempotency_key: Option<&str>,
+        value: &T,
+    ) {
+        let Some(key) = idempotency_key else {
+            return;
+        };
+        let Ok(val) = serde_json::to_value(value) else {
+            return;
+        };
+        let Ok(mut cache) = self.idempotency_cache.lock() else {
+            return;
+        };
+        if cache.len() > 500 {
+            cache.retain(|_, (ts, _)| ts.elapsed() <= Duration::from_mins(10));
+        }
+        cache.insert(
+            (room_id.to_string(), key.to_string()),
+            (Instant::now(), val),
+        );
+    }
+
+    /// Creates a referee-managed room with pre-configured bot count.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` on validation or persistence failure.
+    pub fn referee_create_room(
+        &self,
+        name: &str,
+        password: Option<&str>,
+        initial_bots: usize,
+    ) -> Result<RefereeRoomView, ServiceError> {
+        let now = Instant::now();
+        Ok(self
+            .manager
+            .referee_create_room(name, password, initial_bots, now, self.tab_timeout)?)
+    }
+
+    /// Lists summary cards of all rooms for referee inspection.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` on query failure.
+    pub fn referee_list_rooms(&self) -> Result<Vec<RefereeRoomSummary>, ServiceError> {
+        Ok(self.manager.referee_list_rooms()?)
+    }
+
+    /// Renders the complete, unobstructed referee view for any room.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` if room is not found.
+    pub fn referee_inspect_room(&self, room_id: &str) -> Result<RefereeRoomView, ServiceError> {
+        let now = Instant::now();
+        Ok(self
+            .manager
+            .referee_inspect_room(room_id, now, self.tab_timeout)?)
+    }
+
+    /// Configures bot seats via referee authority during Waiting phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` on revision conflict or room phase error.
+    pub fn referee_setup_bots(
+        &self,
+        room_id: &str,
+        action: BotSetupAction,
+        bot_member_id: Option<&RoomMemberId>,
+        expected_revision: u64,
+    ) -> Result<RefereeRoomView, ServiceError> {
+        let now = Instant::now();
+        Ok(self.manager.referee_setup_bots(
+            room_id,
+            action,
+            bot_member_id,
+            expected_revision,
+            now,
+            self.tab_timeout,
+        )?)
+    }
+
+    /// Starts match via referee authority, supporting idempotency key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` on revision conflict or room error.
+    pub fn referee_start_match(
+        &self,
+        room_id: &str,
+        seed: Option<u64>,
+        expected_revision: u64,
+        idempotency_key: Option<&str>,
+    ) -> Result<RefereeRoomView, ServiceError> {
+        if let Some(cached) = self.check_idempotency::<RefereeRoomView>(room_id, idempotency_key) {
+            return Ok(cached);
+        }
+        let now = Instant::now();
+        let actual_seed = seed.unwrap_or_else(generate_seed);
+        let result = self.manager.referee_start_match(
+            room_id,
+            actual_seed,
+            expected_revision,
+            now,
+            self.tab_timeout,
+        )?;
+        self.record_idempotency(room_id, idempotency_key, &result);
+        Ok(result)
+    }
+
+    /// Advances the active bot by one step via referee authority, supporting idempotency key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` on revision conflict or match error.
+    pub fn referee_step_bot(
+        &self,
+        room_id: &str,
+        expected_revision: u64,
+        idempotency_key: Option<&str>,
+    ) -> Result<RefereeStepResult, ServiceError> {
+        if let Some(cached) = self.check_idempotency::<RefereeStepResult>(room_id, idempotency_key)
+        {
+            return Ok(cached);
+        }
+        let now = Instant::now();
+        let result =
+            self.manager
+                .referee_step_bot(room_id, expected_revision, now, self.tab_timeout)?;
+        self.record_idempotency(room_id, idempotency_key, &result);
+        Ok(result)
+    }
+
+    /// Forces current player turn to execute an action via referee authority, supporting idempotency key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` on revision conflict, match error, or rule violation.
+    pub fn referee_force_command(
+        &self,
+        room_id: &str,
+        expected_revision: u64,
+        command: PlayerCommand,
+        idempotency_key: Option<&str>,
+    ) -> Result<RefereeStepResult, ServiceError> {
+        if let Some(cached) = self.check_idempotency::<RefereeStepResult>(room_id, idempotency_key)
+        {
+            return Ok(cached);
+        }
+        let now = Instant::now();
+        let result = self.manager.referee_force_command(
+            room_id,
+            expected_revision,
+            command,
+            now,
+            self.tab_timeout,
+        )?;
+        self.record_idempotency(room_id, idempotency_key, &result);
+        Ok(result)
+    }
+
+    /// Permanently dissolves a room via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ServiceError` if room does not exist.
+    pub fn referee_dissolve_room(
+        &self,
+        room_id: &str,
+    ) -> Result<RefereeDissolveResult, ServiceError> {
+        Ok(self.manager.referee_dissolve_room(room_id)?)
     }
 
     fn refresh_tab(&self, tab_id: &TabId) {

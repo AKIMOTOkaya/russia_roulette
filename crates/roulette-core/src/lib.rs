@@ -14,7 +14,7 @@ use roulette_domain::{
     BlockReason, CellView, CreateGameConfig, Direction, EliminationCause, GameEvent,
     GameNotification, GameRecord, GameRecordContent, GameState, GameStatus, GameView,
     NotificationLevel, PlayerCommand, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position,
-    RngStreams, Terrain, TerrainLayer, Weather,
+    RefereeGameView, RngStreams, Terrain, TerrainLayer, Weather,
 };
 
 pub mod events;
@@ -519,6 +519,62 @@ impl GameEngine {
             round: state.round,
             status: state.status,
             weather: state.weather,
+            records: state.records[record_start..].to_vec(),
+            event_traces: state.event_traces.clone(),
+            rounds_without_elimination: state.rounds_without_elimination,
+        })
+    }
+
+    /// Projects an authoritative game state into a neutral, omniscient `RefereeGameView`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when map or player coordinates are inconsistent.
+    pub fn project_referee_view(state: &GameState) -> Result<RefereeGameView, CoreError> {
+        let cells = state
+            .terrain
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, terrain)| {
+                let position = position_from_index(index, state.map_size)?;
+                let player_id = state
+                    .players
+                    .iter()
+                    .find(|player| {
+                        player.status == PlayerStatus::Alive && player.position == Some(position)
+                    })
+                    .map(|player| player.id);
+                Ok(CellView {
+                    position,
+                    terrain,
+                    player_id,
+                })
+            })
+            .collect::<Result<Vec<_>, CoreError>>()?;
+        let record_start = state.records.len().saturating_sub(RECORD_VIEW_LIMIT);
+        let current_player_id = if matches!(state.status, GameStatus::Running) {
+            Some(Self::current_player_id(state)?)
+        } else {
+            None
+        };
+        let alive_player_count = state
+            .players
+            .iter()
+            .filter(|player| player.status == PlayerStatus::Alive)
+            .count();
+
+        Ok(RefereeGameView {
+            seed: state.seed,
+            revision: state.revision,
+            map_size: state.map_size,
+            cells,
+            players: state.players.clone(),
+            current_player_id,
+            round: state.round,
+            status: state.status,
+            weather: state.weather,
+            alive_player_count,
             records: state.records[record_start..].to_vec(),
             event_traces: state.event_traces.clone(),
             rounds_without_elimination: state.rounds_without_elimination,

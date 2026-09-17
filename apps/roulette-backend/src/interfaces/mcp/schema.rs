@@ -1,9 +1,11 @@
-//! MCP tool schema definitions and metadata declarations.
+//! MCP tool schema definitions, parameter contracts, and metadata declarations.
 
 #![forbid(unsafe_code)]
 
+use roulette_domain::{BotSetupAction, PlayerCommand, RoomPhase};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Value, to_value};
 
 /// An MCP Tool definition describing name, human description, and JSON schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,172 +18,259 @@ pub struct McpToolDefinition {
     pub input_schema: Value,
 }
 
-/// Returns the standard catalog of Russian Roulette MCP tool specifications.
+/// Parameters for `referee_list_rooms`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeListRoomsParams {
+    /// Optional filter by room lifecycle phase.
+    pub filter_phase: Option<RoomPhase>,
+}
+
+/// Parameters for `referee_inspect_room`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeInspectRoomParams {
+    /// Five-character case-insensitive room short code.
+    pub room_id: String,
+}
+
+/// Parameters for `referee_create_room`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeCreateRoomParams {
+    /// Human-readable room display name.
+    pub room_name: String,
+    /// Optional room password.
+    pub password: Option<String>,
+    /// Number of initial bot seats to pre-populate (0..=6).
+    pub initial_bots: Option<usize>,
+    /// Optional client idempotency key to protect against retry duplicates.
+    pub idempotency_key: Option<String>,
+}
+
+/// Parameters for `referee_setup_bots`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeSetupBotsParams {
+    /// Five-character room identifier.
+    pub room_id: String,
+    /// Action to perform: add or remove bot.
+    pub action: BotSetupAction,
+    /// Specific bot member ID to remove (optional; defaults to the last bot).
+    pub bot_member_id: Option<String>,
+    /// Expected match or room revision for optimistic concurrency control.
+    pub expected_revision: u64,
+}
+
+/// Parameters for `referee_start_match`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeStartMatchParams {
+    /// Five-character room identifier.
+    pub room_id: String,
+    /// Optional deterministic random seed. If omitted, server generates one.
+    pub seed: Option<u64>,
+    /// Expected room revision (must be 0 for starting match).
+    pub expected_revision: u64,
+    /// Optional idempotency key.
+    pub idempotency_key: Option<String>,
+}
+
+/// Parameters for `referee_step_bot`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeStepBotParams {
+    /// Five-character room identifier.
+    pub room_id: String,
+    /// Authoritative state revision expected prior to step.
+    pub expected_revision: u64,
+    /// Optional idempotency key.
+    pub idempotency_key: Option<String>,
+}
+
+/// Parameters for `referee_force_command`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeForceCommandParams {
+    /// Five-character room identifier.
+    pub room_id: String,
+    /// Authoritative state revision expected prior to command.
+    pub expected_revision: u64,
+    /// Exact player command for the current turn owner to perform.
+    pub command: PlayerCommand,
+    /// Optional idempotency key.
+    pub idempotency_key: Option<String>,
+}
+
+/// Parameters for `referee_dissolve_room`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeDissolveRoomParams {
+    /// Five-character room identifier to dissolve.
+    pub room_id: String,
+}
+
+/// Parameters for `referee_query_rules`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeQueryRulesParams {}
+
+/// Parameters for `create_game_room`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CreateGameRoomParams {
+    /// Tab/Agent identity code.
+    pub tab_id: String,
+    /// Room display name.
+    pub room_name: String,
+    /// Player display name.
+    pub player_name: String,
+    /// Optional room password.
+    pub password: Option<String>,
+}
+
+/// Parameters for `list_lobby_rooms`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ListLobbyRoomsParams {
+    /// Tab/Agent identity code.
+    pub tab_id: String,
+}
+
+/// Parameters for `get_room_view`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct GetRoomViewParams {
+    /// Tab/Agent identity code.
+    pub tab_id: String,
+    /// Five-character room code.
+    pub room_id: String,
+}
+
+/// Parameters for `join_game_room`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct JoinGameRoomParams {
+    /// Tab/Agent identity code.
+    pub tab_id: String,
+    /// Five-character room code.
+    pub room_id: String,
+    /// Player display name.
+    pub player_name: String,
+    /// Optional room password.
+    pub password: Option<String>,
+}
+
+/// Parameters for `start_game_room`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StartGameRoomParams {
+    /// Tab/Agent identity code.
+    pub tab_id: String,
+    /// Five-character room code.
+    pub room_id: String,
+    /// Optional random seed.
+    pub seed: Option<u64>,
+}
+
+/// Parameters for `submit_game_command`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SubmitGameCommandParams {
+    /// Tab/Agent identity code.
+    pub tab_id: String,
+    /// Five-character room code.
+    pub room_id: String,
+    /// Expected match revision for concurrency check.
+    pub expected_revision: u64,
+    /// Player command to submit.
+    pub command: PlayerCommand,
+}
+
+/// Parameters for `get_terrain_properties`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct GetTerrainPropertiesParams {}
+
+/// Returns the standard catalog of Russian Roulette Referee MCP tool specifications.
 #[must_use]
-#[allow(clippy::too_many_lines)]
 pub fn standard_tool_definitions() -> Vec<McpToolDefinition> {
     vec![
         McpToolDefinition {
-            name: "list_lobby_rooms".to_string(),
-            description: "查询俄罗斯轮盘游戏大厅的房间列表与活跃摘要".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "调用方客户端 TabId 标识"
-                    }
-                },
-                "required": ["tab_id"]
-            }),
+            name: "referee_list_rooms".to_string(),
+            description: "裁判列出大厅内所有房间的概览摘要与当前状态".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeListRoomsParams))
+                .unwrap_or_default(),
         },
         McpToolDefinition {
-            name: "get_room_view".to_string(),
-            description: "查询指定房间的完整成员席位、阶段及对局棋盘快照".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "调用方客户端 TabId 标识"
-                    },
-                    "room_id": {
-                        "type": "string",
-                        "description": "五位房间号（大小写无关）"
-                    }
-                },
-                "required": ["tab_id", "room_id"]
-            }),
+            name: "referee_inspect_room".to_string(),
+            description: "裁判以全知无遮挡视角检查指定房间详情，包括地图、玩家血量及事件执行流"
+                .to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeInspectRoomParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_create_room".to_string(),
+            description: "裁判主持创建新的比赛房间，可指定房间名并预置 Bot 席位".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeCreateRoomParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_setup_bots".to_string(),
+            description: "裁判在等待阶段为指定房间增添或移除 Bot 席位".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeSetupBotsParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_start_match".to_string(),
+            description: "裁判正式开启比赛对局，支持指定确定性随机种子".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeStartMatchParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_step_bot".to_string(),
+            description: "裁判推进当前轮到的 Bot 执行单步智能决策与状态演化".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeStepBotParams)).unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_force_command".to_string(),
+            description: "裁判强制代行/强裁当前行动玩家执行指定指令（移动、射击、等待、自杀）"
+                .to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeForceCommandParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_dissolve_room".to_string(),
+            description: "裁判强制关闭并解散指定房间".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeDissolveRoomParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_query_rules".to_string(),
+            description: "查询权威规则、特殊地形硬度属性与穿甲弹破坏机制".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeQueryRulesParams))
+                .unwrap_or_default(),
         },
         McpToolDefinition {
             name: "create_game_room".to_string(),
-            description: "创建新的游戏房间，调用方自动成为房主".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "调用方客户端 TabId 标识"
-                    },
-                    "room_name": {
-                        "type": "string",
-                        "description": "房间展示名称"
-                    },
-                    "player_name": {
-                        "type": "string",
-                        "description": "房主玩家昵称"
-                    },
-                    "password": {
-                        "type": "string",
-                        "description": "可选加入密码"
-                    }
-                },
-                "required": ["tab_id", "room_name", "player_name"]
-            }),
+            description: "作为玩家创建新的比赛房间".to_string(),
+            input_schema: to_value(schemars::schema_for!(CreateGameRoomParams)).unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "list_lobby_rooms".to_string(),
+            description: "作为玩家列出大厅中的可见房间".to_string(),
+            input_schema: to_value(schemars::schema_for!(ListLobbyRoomsParams)).unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "get_room_view".to_string(),
+            description: "作为玩家获取指定房间的当前视角".to_string(),
+            input_schema: to_value(schemars::schema_for!(GetRoomViewParams)).unwrap_or_default(),
         },
         McpToolDefinition {
             name: "join_game_room".to_string(),
-            description: "加入指定的等待中房间".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "调用方客户端 TabId 标识"
-                    },
-                    "room_id": {
-                        "type": "string",
-                        "description": "五位房间号（大小写无关）"
-                    },
-                    "player_name": {
-                        "type": "string",
-                        "description": "玩家昵称"
-                    },
-                    "password": {
-                        "type": "string",
-                        "description": "房间密码（若有）"
-                    }
-                },
-                "required": ["tab_id", "room_id", "player_name"]
-            }),
+            description: "作为玩家加入指定房间".to_string(),
+            input_schema: to_value(schemars::schema_for!(JoinGameRoomParams)).unwrap_or_default(),
         },
         McpToolDefinition {
             name: "start_game_room".to_string(),
-            description: "房主在等待阶段启动对局，初始化确定性棋盘".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "房主 TabId 标识"
-                    },
-                    "room_id": {
-                        "type": "string",
-                        "description": "五位房间号"
-                    },
-                    "seed": {
-                        "type": "integer",
-                        "description": "可选确定性随机种子"
-                    }
-                },
-                "required": ["tab_id", "room_id"]
-            }),
+            description: "房主开始当前房间的游戏对局".to_string(),
+            input_schema: to_value(schemars::schema_for!(StartGameRoomParams)).unwrap_or_default(),
         },
         McpToolDefinition {
-            name: "submit_player_command".to_string(),
-            description: "在对局中提交当前玩家行动（移动、射击、等待、自杀）".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "当前行动玩家的 TabId 标识"
-                    },
-                    "room_id": {
-                        "type": "string",
-                        "description": "五位房间号"
-                    },
-                    "expected_revision": {
-                        "type": "integer",
-                        "description": "当前对局状态版本号，用于乐观并发校验"
-                    },
-                    "command": {
-                        "type": "object",
-                        "description": "玩家指令，例如 {\"action\": \"shoot\", \"direction\": \"up\"}"
-                    }
-                },
-                "required": ["tab_id", "room_id", "expected_revision", "command"]
-            }),
-        },
-        McpToolDefinition {
-            name: "step_bot_action".to_string(),
-            description: "房主单步推进轮到行动的 Bot，执行一次决策".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {
-                    "tab_id": {
-                        "type": "string",
-                        "description": "房主 TabId 标识"
-                    },
-                    "room_id": {
-                        "type": "string",
-                        "description": "五位房间号"
-                    },
-                    "expected_revision": {
-                        "type": "integer",
-                        "description": "当前对局状态版本号"
-                    }
-                },
-                "required": ["tab_id", "room_id", "expected_revision"]
-            }),
+            name: "submit_game_command".to_string(),
+            description: "玩家向当前对局提交行动指令".to_string(),
+            input_schema: to_value(schemars::schema_for!(SubmitGameCommandParams))
+                .unwrap_or_default(),
         },
         McpToolDefinition {
             name: "get_terrain_properties".to_string(),
-            description: "查询所有地形层级、硬度阻挡与穿甲弹破坏规则".to_string(),
-            input_schema: json!({
-                "type": "object",
-                "properties": {}
-            }),
+            description: "获取地图地形与特殊硬度破坏规则".to_string(),
+            input_schema: to_value(schemars::schema_for!(GetTerrainPropertiesParams))
+                .unwrap_or_default(),
         },
     ]
 }

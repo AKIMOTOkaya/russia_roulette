@@ -68,6 +68,30 @@ flowchart TD
 
 依赖严格单向：接口层（HTTP/MCP）调用 `GameService`；`GameService` 协调 `GameManager`；`GameManager` 与 `Game` 依赖 `GameRepository` 与 `roulette-core`；`roulette-core` 保持纯粹确定性状态机。
 
+### MCP 接口层与裁判/主持人角色模型 (Referee Role Model)
+
+- **传输与协议握手**：
+  - 基于官方 Rust SDK `rmcp` (v3.4.0) 构建，完全托管 MCP 协议握手、工具发现（`tools/list`）、请求路由（`tools/call`）和 HTTP Streamable Transport。
+  - 在保持全系统单进程（除前端外）约束下，将 `StreamableHttpService` 作为 Tower service 挂载至 Axum 路由 `/mcp`，同时兼容现有轻量 HTTP JSON 端点 `/api/mcp/tools` 和 `/api/mcp/call`。
+- **调用者权限与视角**：
+  - 当前阶段接入的 MCP Agent 统一赋予**“裁判 / 主持人”特权身份 (`CallerRole::Referee`)**。
+  - 拥有全知无遮挡视角 (`RefereeRoomView` / `RefereeGameView`)：可实时检查棋盘所有格子、所有玩家真实坐标与血量状态、行动与事件流水、以及完整的事件决策树 Traces。
+  - 房间持久性保护：裁判创建的房间带有 `referee_managed: true` 标记，即便全员为 Bot 且真人 Tab 离开也不会被垃圾回收例程自动销毁，必须由裁判显式解散 (`referee_dissolve_room`)。
+  - 架构为未来普通玩家客户端通过 MCP 入座保留了清晰的扩展边界 (`CallerRole::Player`)。
+- **权威工具集合 (Tool APIs)**：
+  1. `referee_list_rooms`: 检索大厅所有房间摘要，支持阶段过滤。
+  2. `referee_inspect_room`: 获取指定房间全知无遮挡的对局数据。
+  3. `referee_create_room`: 主持创建新战局，可预填 Bot 席位与密码。
+  4. `referee_setup_bots`: 等待阶段增减 Bot 席位。
+  5. `referee_start_match`: 开启比赛，支持注入确定性种子以便复现与测试。
+  6. `referee_step_bot`: 推进当前轮次的 Bot 执行一步智能决策，演化状态并递增版本。
+  7. `referee_force_command`: 强裁或代行当前轮次玩家执行指定指令（移动/射击/等待/自杀）。
+  8. `referee_dissolve_room`: 强制关闭并清理对局。
+  9. `referee_query_rules`: 获取游戏权威规则、地形硬度层级与穿甲弹破坏机制。
+- **并发与幂等约束**：
+  - **乐观并发控制 (OCC)**：写操作（`setup_bots`, `start_match`, `step_bot`, `force_command`）必须携带 `expected_revision`，版本冲突时直接以标准结构化错误拦截 (`REVISION_CONFLICT`)。
+  - **内存短期幂等缓存**：`GameService` 内置短期基于 `(room_id, idempotency_key)` 的缓存，有效防止 LLM 或网络重试导致的重复步进或重复开局。
+
 
 ## 计划中的模块
 

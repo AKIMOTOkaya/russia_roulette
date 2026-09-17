@@ -5,7 +5,11 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use roulette_domain::{LobbyView, PlayerCommand, RoomId, RoomMemberId, RoomView, TabId};
+use roulette_domain::{
+    BotSetupAction, GameStatus, LobbyView, PlayerCommand, RefereeDissolveResult,
+    RefereeRoomSummary, RefereeRoomView, RefereeStepResult, RoomId, RoomMemberId, RoomPhase,
+    RoomView, TabId,
+};
 
 use crate::error::HostError;
 use crate::game::Game;
@@ -326,6 +330,212 @@ impl GameManager {
         Ok(view)
     }
 
+    /// Creates a referee-managed room with pre-configured bot participants.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if room name validation or room code generation fails.
+    pub fn referee_create_room(
+        &self,
+        name: &str,
+        password: Option<&str>,
+        initial_bots: usize,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<RefereeRoomView, HostError> {
+        validate_name(name, 40, "room name")?;
+        let password = normalize_password(password)?;
+        let room_id = self.generate_room_id()?;
+        let game = Game::new_referee(room_id, name.trim().to_owned(), password, initial_bots);
+        self.repository.save(&game)?;
+        Ok(game.referee_view(now, timeout))
+    }
+
+    /// Lists summary cards of all rooms for referee inspection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if repository query fails.
+    pub fn referee_list_rooms(&self) -> Result<Vec<RefereeRoomSummary>, HostError> {
+        let games = self.repository.all_games()?;
+        Ok(games.iter().map(Game::referee_summary).collect())
+    }
+
+    /// Renders the complete, unobstructed referee view for any room.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if room is not found.
+    pub fn referee_inspect_room(
+        &self,
+        room_id: &str,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<RefereeRoomView, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let game = self
+            .repository
+            .find_by_id(&normalized)?
+            .ok_or(HostError::RoomNotFound)?;
+        Ok(game.referee_view(now, timeout))
+    }
+
+    /// Configures bot seats via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, invalid phase, or capacity violation.
+    pub fn referee_setup_bots(
+        &self,
+        room_id: &str,
+        action: BotSetupAction,
+        bot_member_id: Option<&RoomMemberId>,
+        expected_revision: u64,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<RefereeRoomView, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let mut game = self
+            .repository
+            .find_by_id(&normalized)?
+            .ok_or(HostError::RoomNotFound)?;
+
+        game.referee_setup_bots(action, bot_member_id, expected_revision)?;
+        self.repository.save(&game)?;
+        Ok(game.referee_view(now, timeout))
+    }
+
+    /// Starts match via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, invalid phase, or core creation error.
+    pub fn referee_start_match(
+        &self,
+        room_id: &str,
+        seed: u64,
+        expected_revision: u64,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<RefereeRoomView, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let mut game = self
+            .repository
+            .find_by_id(&normalized)?
+            .ok_or(HostError::RoomNotFound)?;
+
+        game.referee_start_match(seed, expected_revision)?;
+        self.repository.save(&game)?;
+        Ok(game.referee_view(now, timeout))
+    }
+
+    /// Advances the active bot by one step via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, match not running, or if a human owns turn.
+    pub fn referee_step_bot(
+        &self,
+        room_id: &str,
+        expected_revision: u64,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<RefereeStepResult, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let mut game = self
+            .repository
+            .find_by_id(&normalized)?
+            .ok_or(HostError::RoomNotFound)?;
+
+        let previous_revision = game.current_revision();
+        let (acting_player_id, action_desc) = game.referee_step_bot(expected_revision)?;
+        self.repository.save(&game)?;
+
+        let new_revision = game.current_revision();
+        let is_match_finished = game.phase == RoomPhase::Finished;
+        let winner_player_id = game
+            .match_session
+            .as_ref()
+            .and_then(|m| match m.state.status {
+                GameStatus::Finished { winner_id } => winner_id,
+                GameStatus::Running => None,
+            });
+
+        Ok(RefereeStepResult {
+            room_id: game.id.clone(),
+            acting_player_id,
+            action_desc,
+            previous_revision,
+            new_revision,
+            is_match_finished,
+            winner_player_id,
+            room: game.referee_view(now, timeout),
+        })
+    }
+
+    /// Forces the current player turn to execute an action via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error on revision conflict, match not running, or core rule violation.
+    pub fn referee_force_command(
+        &self,
+        room_id: &str,
+        expected_revision: u64,
+        command: PlayerCommand,
+        now: Instant,
+        timeout: Duration,
+    ) -> Result<RefereeStepResult, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let mut game = self
+            .repository
+            .find_by_id(&normalized)?
+            .ok_or(HostError::RoomNotFound)?;
+
+        let previous_revision = game.current_revision();
+        let (acting_player_id, action_desc) =
+            game.referee_force_command(expected_revision, command)?;
+        self.repository.save(&game)?;
+
+        let new_revision = game.current_revision();
+        let is_match_finished = game.phase == RoomPhase::Finished;
+        let winner_player_id = game
+            .match_session
+            .as_ref()
+            .and_then(|m| match m.state.status {
+                GameStatus::Finished { winner_id } => winner_id,
+                GameStatus::Running => None,
+            });
+
+        Ok(RefereeStepResult {
+            room_id: game.id.clone(),
+            acting_player_id: Some(acting_player_id),
+            action_desc,
+            previous_revision,
+            new_revision,
+            is_match_finished,
+            winner_player_id,
+            room: game.referee_view(now, timeout),
+        })
+    }
+
+    /// Permanently dissolves a room via referee authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if room is not found.
+    pub fn referee_dissolve_room(&self, room_id: &str) -> Result<RefereeDissolveResult, HostError> {
+        let normalized = normalize_room_id(room_id)?;
+        let existed = self.repository.delete(&normalized)?;
+        if !existed {
+            return Err(HostError::RoomNotFound);
+        }
+        Ok(RefereeDissolveResult {
+            room_id: normalized,
+            message: "Room dissolved by referee authority".to_string(),
+        })
+    }
+
     fn generate_room_id(&self) -> Result<RoomId, HostError> {
         let mut rng_guard = self
             .room_code_rng
@@ -353,7 +563,7 @@ impl GameManager {
         };
 
         let has_remaining = game.remove_tab(tab_id);
-        if has_remaining {
+        if has_remaining || game.referee_managed {
             let _ = self.repository.save(&game);
         } else {
             let _ = self.repository.delete(&game.id);

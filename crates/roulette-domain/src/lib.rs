@@ -6,30 +6,31 @@
 
 #![forbid(unsafe_code)]
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Stable identifier for a player within one match.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct PlayerId(pub u32);
 
 /// Browser-tab identity used by the local lobby.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct TabId(pub String);
 
 /// Case-insensitive five-character room identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct RoomId(pub String);
 
 /// Stable room-member identifier for either a human tab or a bot slot.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct RoomMemberId(pub String);
 
 /// Stable identifier indexing an event definition in the event catalog.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct EventId(pub String);
 
@@ -42,7 +43,7 @@ impl EventId {
 }
 
 /// Rarity and dramatic impact tier of an event.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EventTier {
     /// Common, ordinary events (~10%).
@@ -59,7 +60,7 @@ pub enum EventTier {
 }
 
 /// Detailed diagnostic record of an event candidate during a dynamic pool roll.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CandidateTrace {
     /// Event identifier.
     pub event_id: EventId,
@@ -80,7 +81,7 @@ pub struct CandidateTrace {
 }
 
 /// Detailed diagnostic trace of a single node in the event BFS resolution tree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct EventNodeTrace {
     /// Node sequence identifier in the pipeline run.
     pub node_id: u32,
@@ -109,7 +110,7 @@ pub struct EventNodeTrace {
 }
 
 /// Complete diagnostic trace of a single BFS event pipeline execution.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PipelineTrace {
     /// Monotonic run identifier.
     pub id: u64,
@@ -126,7 +127,7 @@ pub struct PipelineTrace {
 }
 
 /// Global weather and environmental condition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Weather {
     /// Normal clear conditions without global effect.
@@ -141,7 +142,7 @@ pub enum Weather {
 }
 
 /// A coordinate on the square map.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Position {
     /// Horizontal coordinate, increasing to the right.
     pub x: u8,
@@ -150,7 +151,7 @@ pub struct Position {
 }
 
 /// Four-way movement and shooting direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     /// Move or shoot upward.
@@ -177,7 +178,7 @@ impl Direction {
 }
 
 /// Terrain types enabled by the local Web MVP.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Terrain {
     /// Walkable ground without an effect.
@@ -199,7 +200,7 @@ pub enum Terrain {
 }
 
 /// Placement layer or elevation of a terrain type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TerrainLayer {
     /// Above the ground (e.g. wall, crate, ice, empty).
@@ -226,7 +227,7 @@ impl TerrainLayer {
 }
 
 /// Static mechanical attributes and destruction properties of a terrain type.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TerrainProperties {
     /// Associated terrain enum.
     pub terrain: Terrain,
@@ -341,7 +342,7 @@ impl Terrain {
 }
 
 /// Whether a player is controlled by a person or the local random bot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PlayerKind {
     /// Human player using the browser.
@@ -351,7 +352,7 @@ pub enum PlayerKind {
 }
 
 /// Player life-cycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PlayerStatus {
     /// Player may still take turns.
@@ -361,7 +362,7 @@ pub enum PlayerStatus {
 }
 
 /// Player information stored in the authoritative state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PlayerState {
     /// Match-local player identifier.
     pub id: PlayerId,
@@ -382,7 +383,7 @@ pub struct PlayerState {
 }
 
 /// Player definition used when creating a match.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PlayerSetup {
     /// Display name.
     pub name: String,
@@ -391,7 +392,7 @@ pub struct PlayerSetup {
 }
 
 /// Explicit inputs required to create a deterministic game.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CreateGameConfig {
     /// Seed from which independent random streams are derived.
     pub seed: u64,
@@ -400,7 +401,7 @@ pub struct CreateGameConfig {
 }
 
 /// Commands accepted by the MVP rules engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PlayerCommand {
     /// Move one tile in a cardinal direction.
@@ -420,7 +421,7 @@ pub enum PlayerCommand {
 }
 
 /// Why a movement command could not enter its target tile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BlockReason {
     /// Target lies outside the map.
@@ -432,7 +433,7 @@ pub enum BlockReason {
 }
 
 /// Cause recorded when a player is eliminated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EliminationCause {
     /// Hit by a revolver bullet.
@@ -450,7 +451,7 @@ pub enum EliminationCause {
 }
 
 /// Structured facts emitted by the rules engine.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GameEvent {
     /// A player entered another tile.
@@ -551,7 +552,7 @@ pub enum GameEvent {
 }
 
 /// Machine-readable system notifications shown in the comprehensive log.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GameNotification {
     /// A new authoritative match was created.
@@ -567,7 +568,7 @@ pub enum GameNotification {
 }
 
 /// Severity used to render and route system notifications.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationLevel {
     /// Ordinary informational notification.
@@ -579,7 +580,7 @@ pub enum NotificationLevel {
 }
 
 /// One category of entry in the comprehensive chronological game log.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "category", rename_all = "snake_case")]
 pub enum GameRecordContent {
     /// A player submitted an accepted command.
@@ -611,7 +612,7 @@ pub enum GameRecordContent {
 }
 
 /// Ordered entry in the comprehensive game log.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct GameRecord {
     /// Match-local monotonic sequence number, starting at one.
     pub sequence: u64,
@@ -622,7 +623,7 @@ pub struct GameRecord {
 }
 
 /// Terminal or running status of a game.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum GameStatus {
     /// Commands may still be submitted.
@@ -685,7 +686,7 @@ pub struct GameState {
 }
 
 /// Public map cell used by the Web client.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CellView {
     /// Cell position.
     pub position: Position,
@@ -696,7 +697,7 @@ pub struct CellView {
 }
 
 /// Public snapshot returned to the local Web client.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct GameView {
     /// Creation seed.
     pub seed: u64,
@@ -727,7 +728,7 @@ pub struct GameView {
 }
 
 /// Lifecycle phase of a local lobby room.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RoomPhase {
     /// Humans and bots may join; the owner may configure and start the match.
@@ -739,7 +740,7 @@ pub enum RoomPhase {
 }
 
 /// One human or bot displayed in the room roster.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RoomMemberView {
     /// Stable identifier used for bot removal and owner transfer.
     pub id: RoomMemberId,
@@ -756,7 +757,7 @@ pub struct RoomMemberView {
 }
 
 /// Room card shown in the lobby.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RoomSummary {
     /// Five-character room identifier.
     pub id: RoomId,
@@ -777,7 +778,7 @@ pub struct RoomSummary {
 }
 
 /// Tab-specific lobby response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LobbyView {
     /// All active rooms.
     pub rooms: Vec<RoomSummary>,
@@ -786,7 +787,7 @@ pub struct LobbyView {
 }
 
 /// Tab-specific room response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RoomView {
     /// Five-character room identifier.
     pub id: RoomId,
@@ -802,4 +803,147 @@ pub struct RoomView {
     pub is_owner: bool,
     /// Current match view after the room has started.
     pub game: Option<GameView>,
+}
+
+/// Caller role in the Russian Roulette system.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "role", rename_all = "snake_case")]
+pub enum CallerRole {
+    /// Neutral arbiter / moderator with privileged match controls and omniscient perspective.
+    Referee,
+    /// Individual match participant seat.
+    Player {
+        /// Player ID associated with this caller.
+        player_id: PlayerId,
+    },
+}
+
+/// Action to perform when referee configures bot slots in a room.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BotSetupAction {
+    /// Add one bot slot to the waiting room.
+    Add,
+    /// Remove one bot slot from the waiting room.
+    Remove,
+}
+
+/// Referee's unobstructed view of a single room member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeMemberView {
+    /// Member identifier.
+    pub id: RoomMemberId,
+    /// Member display name.
+    pub name: String,
+    /// Human tab or automated bot.
+    pub kind: PlayerKind,
+    /// Whether this member holds room ownership.
+    pub is_owner: bool,
+    /// Assigned player ID in running/finished match, if any.
+    pub player_id: Option<PlayerId>,
+    /// Whether this human tab is actively connected and heartbeat-fresh.
+    pub is_connected: bool,
+}
+
+/// Referee's omniscient, impartial view of an active or finished match.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeGameView {
+    /// Match seed.
+    pub seed: u64,
+    /// Authoritative state revision.
+    pub revision: u64,
+    /// Board edge length.
+    pub map_size: u8,
+    /// Full row-major cells with all occupants and terrain.
+    pub cells: Vec<CellView>,
+    /// Status and position of all players.
+    pub players: Vec<PlayerState>,
+    /// Player currently expected to act, if match is running.
+    pub current_player_id: Option<PlayerId>,
+    /// One-based round number.
+    pub round: u32,
+    /// Running or terminal status with winner ID.
+    pub status: GameStatus,
+    /// Active weather condition.
+    pub weather: Weather,
+    /// Count of currently alive players.
+    pub alive_player_count: usize,
+    /// Chronological history of actions, events, turns, and notifications.
+    pub records: Vec<GameRecord>,
+    /// Complete diagnostic traces of event pipeline tree resolutions.
+    pub event_traces: Vec<PipelineTrace>,
+    /// Consecutive rounds without player elimination.
+    pub rounds_without_elimination: u32,
+}
+
+/// Omniscient room snapshot for the referee / host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeRoomView {
+    /// Five-character room code.
+    pub id: RoomId,
+    /// Room display name.
+    pub name: String,
+    /// Current lifecycle phase.
+    pub phase: RoomPhase,
+    /// Cleartext password configured for this room, if any.
+    pub password: Option<String>,
+    /// Whether this room was created and is moderated by the referee.
+    pub referee_managed: bool,
+    /// All room members in stable seat order.
+    pub members: Vec<RefereeMemberView>,
+    /// Full match view if match has started.
+    pub game: Option<RefereeGameView>,
+}
+
+/// Outcome of a referee-driven action or bot step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeStepResult {
+    /// Room identifier.
+    pub room_id: RoomId,
+    /// Player who acted in this step, if any.
+    pub acting_player_id: Option<PlayerId>,
+    /// Semantic summary of the action executed.
+    pub action_desc: String,
+    /// State revision prior to execution.
+    pub previous_revision: u64,
+    /// New state revision after execution.
+    pub new_revision: u64,
+    /// Whether the match reached a terminal state on this step.
+    pub is_match_finished: bool,
+    /// Winner of the match if finished, or None.
+    pub winner_player_id: Option<PlayerId>,
+    /// Fresh room state snapshot after step.
+    pub room: RefereeRoomView,
+}
+
+/// High-level room summary for the referee lobby listing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeRoomSummary {
+    /// Five-character room code.
+    pub id: RoomId,
+    /// Room display name.
+    pub name: String,
+    /// Current lifecycle phase.
+    pub phase: RoomPhase,
+    /// Count of human members.
+    pub human_count: usize,
+    /// Count of bot members.
+    pub bot_count: usize,
+    /// Room maximum capacity.
+    pub capacity: usize,
+    /// Whether password is required for human join.
+    pub password_required: bool,
+    /// Whether room is referee-managed.
+    pub referee_managed: bool,
+    /// Current match revision if match has started.
+    pub current_revision: Option<u64>,
+}
+
+/// Result of dissolving a room via referee authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeDissolveResult {
+    /// Successfully dissolved room ID.
+    pub room_id: RoomId,
+    /// Human-readable confirmation.
+    pub message: String,
 }

@@ -12,11 +12,26 @@ use axum::{
     Router, middleware as axum_middleware,
     routing::{get, post},
 };
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+};
 use roulette_host::GameService;
+
+use crate::interfaces::mcp::RussianRouletteMcpServer;
 
 /// Builds the Axum router with HTTP routes and middleware.
 pub fn build_router(service: Arc<GameService>) -> Router {
+    let mcp_service = StreamableHttpService::new(
+        {
+            let service = Arc::clone(&service);
+            move || Ok(RussianRouletteMcpServer::new(Arc::clone(&service)))
+        },
+        Arc::new(LocalSessionManager::default()),
+        StreamableHttpServerConfig::default(),
+    );
+
     Router::new()
+        .nest_service("/mcp", mcp_service)
         .route("/", get(handlers::index))
         .route("/styles.css", get(handlers::styles))
         .route("/app.js", get(handlers::script))
