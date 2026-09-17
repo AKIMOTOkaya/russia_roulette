@@ -7,6 +7,7 @@ publish.workspace = true
 [dependencies]
 roulette-core.workspace = true
 roulette-domain.workspace = true
+serde.workspace = true
 
 [lints]
 workspace = true

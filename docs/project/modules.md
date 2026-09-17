@@ -6,25 +6,68 @@
 |---------------|-------------------|----------|----------|--------------|
 | `roulette-domain` | `roulette_domain` | MVP 已实现 | 可序列化的 Tab/房间/成员/玩家 ID、EventId、EventTier、Weather、冰面地形、房间视图、命令、分类记录、事件/戏剧化事件、通知、权威状态、事件诊断树流水（CandidateTrace、EventNodeTrace、PipelineTrace，含 is_lethal 与 stalemate_rounds 标定）、地形三维属性规范契约（`TerrainLayer`：地上/地下/地上且地下/特殊，`TerrainProperties`：位置、硬度、被摧毁转换与战术说明）、随机流、Web 视图及淘汰死因（含 Collision 猛烈撞墙）。 | `serde`；不依赖运行时。 |
 | `roulette-core` | `roulette_core` | MVP 已实现 | 确定性地图生成、命令校验、状态转移、显式 RNG、事件树 BFS 管线（`EventTreePipeline`）、事件定义索引库（`EventRegistry`）、多因素动态概率评估模型（`EventPool`，含基础移动 75% 正常行动基线、行动级行动未减员递增计数、差异化带权致死事件与概率上限截断机制 `LethalScope` / `max_probability_permille`）、统一事件层枪膛判定（移除底层物理层硬编码 25% 随机空膛及连续 3 次空膛判定，改由 `shoot_intent` 中的 `evt_revolver_misfire` 统一裁定与叙事，彻底杜绝打出穿甲弹又被判定枪膛为空的逻辑矛盾）、基于硬度与位置合法性保护的弹道破坏机制（普通弹击碎硬度 1 木箱停下、穿甲重弹击碎硬度 2 墙体并贯穿前行、地下地雷免疫子弹）、智能 Bot 决策（移除等待，4 向直视射击，BFS 寻敌且避开地雷等负面机关）、环境天气与冰面相变、胜负和视图投影。 | `roulette-domain`。 |
-| `roulette-host` | `roulette_host` | 本地多房间 MVP | 内存大厅、五位房间号、Tab 身份、房间密码、房主权限/转让、成员和 Bot 管理、活动超时、revision 校验及 Bot 调度。 | `roulette-core`、`roulette-domain`。 |
-| `roulette-backend` | 不作为库导出 | 本地 Web MVP | 多房间 HTTP API、权威地形规则查询（`GET /api/rules/terrains`）、嵌入 Web 资源、创始人临时认证、局域网访问软开关和进程生命周期。 | `roulette-host`、`roulette-domain`、Axum、Tokio。 |
+| `roulette-host` | `roulette_host` | 本地多房间 MVP | 解耦的领域管理与应用服务层：应用服务门面（`GameService`，统一暴露与协议无关的用例）、领域管理层（`GameManager`，管理多房间生命周期与短码分配）、实体聚合层（`Game`，封装房间席位、Bot 调度与对局推进）、仓储抽象契约（`GameRepository`，默认基于线程安全内存实现，预留后续接入 SQLite / PostgreSQL 持久化）。 | `roulette-core`、`roulette-domain`、`serde`。 |
+| `roulette-backend` | 不作为库导出 | 本地 Web / MCP 服务端 | 单进程服务组装根与多接口适配层：HTTP 适配器（Axum Web/API 路由、前端静态资源嵌入、局域网控制中间件）、MCP 适配器（Model Context Protocol 标准工具契约与 `McpDispatcher` 派发器，支持工具列举与 JSON 分发调用）。两套接口并列在同一进程中直接调用 `GameService`。 | `roulette-host`、`roulette-domain`、Axum、Tokio、`serde_json`。 |
 
-## 依赖方向
+## 依赖与分层架构
 
-```mermaid
-flowchart LR
-    Backend[roulette-backend] --> Host[roulette-host]
-    Host --> Core[roulette-core]
-    Host --> Domain[roulette-domain]
-    Core --> Domain
-
-    Web[clients/web] -->|MVP HTTP JSON| Backend
-
-    FutureWeb[future public clients] --> Protocol[protocol schema / generated SDK]
-    Backend -. future .-> Protocol
+```text
+┌──────────────────────────────────────┐
+│        server (roulette-backend)     │
+│                                      │
+│   HTTP        MCP        其他接口层  │
+│    │           │          │          │
+│    └───────────┼──────────┘          │
+│                ▼                     │
+│           GameService                │
+│                │                     │
+│           GameManager                │
+│                │                     │
+│             Game                     │
+│                │                     │
+│        Rules / State Machine         │
+│                │                     │
+│           Repository                 │
+│                │                     │
+│   InMemory / (SQLite / PostgreSQL)   │
+│                                      │
+└──────────────────────────────────────┘
 ```
 
-依赖不得反向：`roulette-domain` 不认识 Core、Host 或客户端；`roulette-core` 不认识网络、数据库、文件和进程；客户端不链接权威规则。
+```mermaid
+flowchart TD
+    subgraph Server [Single Server Process: roulette-backend]
+        subgraph Interfaces [Interface Layer]
+            HTTP[HTTP / Axum API & Web]
+            MCP[MCP Tool Dispatcher]
+            Other[Future Interfaces / CLI]
+        end
+
+        Service[GameService: Application Facade]
+        Manager[GameManager: Domain Lifecycle]
+        GameEntity[Game: Aggregate Root & HostedMatch]
+        Repo[GameRepository: InMemory / SQLite / Postgres]
+        
+        HTTP --> Service
+        MCP --> Service
+        Other --> Service
+        
+        Service --> Manager
+        Manager --> GameEntity
+        Manager --> Repo
+        GameEntity -. persists .-> Repo
+    end
+
+    Core[roulette-core: Deterministic State Machine]
+    Domain[roulette-domain: Pure Types & View Contracts]
+
+    GameEntity --> Core
+    Core --> Domain
+    Server --> Domain
+```
+
+依赖严格单向：接口层（HTTP/MCP）调用 `GameService`；`GameService` 协调 `GameManager`；`GameManager` 与 `Game` 依赖 `GameRepository` 与 `roulette-core`；`roulette-core` 保持纯粹确定性状态机。
+
 
 ## 计划中的模块
 
