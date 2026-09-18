@@ -29,3 +29,7 @@ coverage/
 dist/
 build/
 *.egg-info/
+deploy/**/runtime/*
+!deploy/**/runtime/.gitkeep
+!deploy/**/runtime/build-info.md
+

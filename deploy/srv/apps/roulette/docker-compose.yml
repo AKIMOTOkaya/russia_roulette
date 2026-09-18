@@ -1,6 +1,6 @@
 services:
   roulette-backend:
-    image: gcr.io/distroless/cc-debian12:nonroot
+    image: debian:12-slim
     restart: unless-stopped
     working_dir: /app
     entrypoint: ["${ROULETTE_RUNTIME_DIR:-/app/runtime}/roulette-backend"]

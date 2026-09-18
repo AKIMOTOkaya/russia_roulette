@@ -44,14 +44,23 @@ apps/<app>/
 | `srv_edge` | `gateway/caddy` | Caddy 与所有公网应用容器之间的内部反向代理网络。 | 已加入。 |
 | `srv_data` | `infra/db` | PostgreSQL 与使用共享数据库的应用容器网络。 | 暂不加入。 |
 
-`roulette-backend` 只使用 `expose` 声明容器端口，不发布宿主机公网端口。Caddy 未来通过 `roulette-backend:8080` 反向代理；域名确定后再由运维单独修改 `gateway/caddy/Caddyfile`。
+`roulette-backend` 只使用 `expose` 声明容器端口，不发布宿主机公网端口。Caddy 通过内部网络反向代理：
+```caddyfile
+rrt.akiai.asia {
+    reverse_proxy roulette-backend:8080
+}
+```
+当前已正式配置域名 `rrt.akiai.asia` 接入 Caddy 并完成 HTTPS 证书签发与在线验证。
 
 数据库接入必须等数据库角色、库名、凭证注入和迁移策略确定后再实施。届时才为服务增加 `srv_data` 网络与数据库环境变量。
 
-## 当前容器
+## 当前容器与部署产物
 
-| **Compose 服务** | **镜像** | **入口** | **内部端口** | **网络** |
-|------------------|----------|----------|--------------|----------|
-| `roulette-backend` | `gcr.io/distroless/cc-debian12:nonroot` | `/app/runtime/roulette-backend` | `8080` | `srv_edge` |
+| **Compose 服务** | **基础镜像** | **入口** | **内部端口** | **网络** | **公网访问** |
+|------------------|--------------|----------|--------------|----------|--------------|
+| `roulette-backend` | `debian:12-slim` | `/app/runtime/roulette-backend` | `8080` | `srv_edge` | `https://rrt.akiai.asia` |
 
-当前源码已能作为本地 Web MVP 运行，但服务器模板仍只是部署骨架：尚未产出 Linux 可执行文件，也未配置 Caddy 路由。将本地单局暴露到公网还缺少身份、访问隔离和安全评审，因此不能把当前二进制直接视为公网多人服务。
+- **二进制构建**：在仓库根目录执行 `./scripts/build-srv.sh`，构建 Linux x86_64 生产版本，并自动同步安装到 `deploy/srv/apps/roulette/services/roulette-backend/runtime/` 及本机影子目录 `/Users/akimotokaya/Documents/srv/apps/roulette/`。
+- **推送到服务器**：在影子目录根目录执行 `./ops/scripts/push.sh roulette --restart`。
+- **凭据管理**：静态管理员 Token（`ROULETTE_ADMIN_TOKEN`）持久化保存在 `services/roulette-backend/.env` 中，避免容器重启导致 Token 漂移。
+

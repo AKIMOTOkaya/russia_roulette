@@ -1,0 +1,8 @@
+target
+.git
+.gitignore
+deploy
+docs
+scripts
+*.log
+.DS_Store

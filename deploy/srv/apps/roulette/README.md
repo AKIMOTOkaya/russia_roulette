@@ -1,32 +1,57 @@
-# Roulette 服务器应用
+# Roulette (俄罗斯轮盘) 公网服务器应用
 
-该目录镜像服务器 `~/srv/apps/roulette`，当前包含一个 `roulette-backend` 服务。
+该目录镜像服务器 `~/srv/apps/roulette`，提供俄罗斯轮盘公网中央服务器对局与 MCP 接口服务。
 
-## 部署运行文件
+## 服务构成
 
-将为 Linux 目标构建的可执行文件放到：
+- `roulette-backend`: 基于 `gcr.io/distroless/cc-debian12:nonroot` 最小化运行镜像（或通过 `services/roulette-backend/Dockerfile` 构建），挂载并运行经过静态优化的 Linux x86_64 二进制。
 
-```text
-services/roulette-backend/runtime/roulette-backend
-```
+## 网络与访问
 
-并保证文件具有执行权限。Rust 应用源码已可运行本地 Web MVP，但本模板尚未生成 Linux 服务端文件；当前实现也只有进程内单局，不是完成的公网多人服务。
+- 服务加入共享外部网络 `srv_edge`。
+- Compose 仅 `expose` 内部端口 `${ROULETTE_HTTP_PORT:-8080}`，不向宿主机发布直接端口（防暴力扫描与未授权绕过）。
+- 边缘网关 Caddy 反代域名 `rrt.akiai.asia` 到 `roulette-backend:8080`：
+  ```caddyfile
+  rrt.akiai.asia {
+      reverse_proxy roulette-backend:8080
+  }
+  ```
 
-## 网络
+## 运行环境变量
 
-- 服务只加入外部网络 `srv_edge`。
-- Compose 仅 `expose` 内部端口 `8080`，不发布宿主机端口。
-- Caddy 上游地址为 `roulette-backend:8080`。
-- 当前不加入数据库使用的 `srv_data` 网络。
+配置文件位于 `./services/roulette-backend/.env`：
+- `ROULETTE_ENV=production`：生产运行环境；
+- `ROULETTE_SERVER_MODE=public`：公网中央服务器模式（自动放行反向代理流量并压制本地回环检查）；
+- `ROULETTE_HTTP_HOST=0.0.0.0`
+- `ROULETTE_HTTP_PORT=8080`
+- `ROULETTE_ADMIN_TOKEN`：静态管理员与裁判 Token（避免重启变化，持久化保存在文件中）；
+- `ROULETTE_PUBLIC_BASE_URL=https://rrt.akiai.asia`：公网外部访问地址；
+- `ROULETTE_RUNTIME_DIR=/app/runtime`：运行时目录。
 
-## 检查与启动
+## 构建与部署流程
 
-在服务器影子目录或服务器对应目录中执行：
+1. **构建生产 Linux 二进制**：
+   在源码仓库根目录下执行构建脚本：
+   ```bash
+   ./scripts/build-srv.sh
+   ```
+   该脚本会自动利用 Docker 或交叉编译器编译 Linux x86_64 生产版本，放置到 `runtime/roulette-backend`，并同步安装到本机影子目录 `~/Documents/srv/apps/roulette/`。
 
-```bash
-docker compose config
-docker compose up -d
-docker compose ps
-```
+2. **推送到中央服务器并重启**：
+   在影子仓库根目录执行：
+   ```bash
+   ./ops/scripts/push.sh roulette --restart
+   ```
 
-在 Linux 可执行文件、Caddy 路由和公网访问安全边界准备好之前，只执行 `docker compose config`，不要启动服务。
+3. **运维与诊断命令**：
+   ```bash
+   # 查看运行容器状态
+   ssh aki@106.54.211.86 "docker compose -f ~/srv/apps/roulette/docker-compose.yml ps"
+
+   # 查看实时服务日志
+   ssh aki@106.54.211.86 "docker logs -f roulette-roulette-backend-1"
+
+   # 校验健康检查与设置接口
+   curl -s https://rrt.akiai.asia/api/health
+   curl -s https://rrt.akiai.asia/api/server/settings?tab_id=probe
+   ```
