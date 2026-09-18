@@ -10,7 +10,7 @@ use axum::{
     http::{StatusCode, header},
     response::{Html, IntoResponse},
 };
-use roulette_domain::{LobbyView, RoomView, TerrainProperties};
+use roulette_domain::{LobbyView, RoomView, ServerMode, TabId, TerrainProperties, UserIdentity};
 use roulette_host::{CreateRoomConfig, GameService, JoinRoomConfig, ServerSettings};
 
 use crate::interfaces::http::dtos::{
@@ -23,10 +23,24 @@ const INDEX_HTML: &str = include_str!("../../../../../clients/web/index.html");
 const STYLES_CSS: &str = include_str!("../../../../../clients/web/styles.css");
 const APP_JS: &str = include_str!("../../../../../clients/web/app.js");
 
+/// Resolves a unified `UserIdentity` from an HTTP tab identifier and optional authorization header.
+/// In the future public server mode, `auth_header` can be validated as a bearer token or session cookie.
+/// For now, tabs are treated as temporary session identities (`IdentityKind::TemporaryTab`).
+#[must_use]
+pub fn resolve_identity(
+    tab_id: &TabId,
+    _auth_header: Option<&str>,
+    _mode: ServerMode,
+) -> UserIdentity {
+    UserIdentity::temporary_tab(tab_id.clone())
+}
+
+/// Serves the single-page HTML client shell.
 pub async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
 }
 
+/// Serves static CSS styling for the client web interface.
 pub async fn styles() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
@@ -34,6 +48,7 @@ pub async fn styles() -> impl IntoResponse {
     )
 }
 
+/// Serves static JavaScript logic for the client web interface.
 pub async fn script() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
@@ -41,16 +56,23 @@ pub async fn script() -> impl IntoResponse {
     )
 }
 
+/// Serves basic service health status.
 pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
+/// Queries authoritative definitions and hardness properties of game terrains.
 pub async fn terrain_rules(
     State(service): State<Arc<GameService>>,
 ) -> Json<Vec<TerrainProperties>> {
     Json(service.get_terrain_rules())
 }
 
+/// Fetches current lobby rooms visible to requesting tab.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room query fails.
 pub async fn lobby_view(
     State(service): State<Arc<GameService>>,
     Query(query): Query<TabQuery>,
@@ -61,6 +83,11 @@ pub async fn lobby_view(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Refreshes tab heartbeat to prevent session expiry.
+///
+/// # Errors
+///
+/// Returns `ApiError` on internal error.
 pub async fn heartbeat(
     State(service): State<Arc<GameService>>,
     Json(request): Json<TabRequest>,
@@ -69,6 +96,11 @@ pub async fn heartbeat(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Creates a new game room.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room validation fails or room limit is reached.
 pub async fn create_room(
     State(service): State<Arc<GameService>>,
     Json(request): Json<CreateRoomRequest>,
@@ -84,6 +116,11 @@ pub async fn create_room(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Joins an existing game room.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room does not exist, password is wrong, or room is full.
 pub async fn join_room(
     State(service): State<Arc<GameService>>,
     Json(request): Json<JoinRoomRequest>,
@@ -99,6 +136,11 @@ pub async fn join_room(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Fetches state and room view for a specific tab in a room.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room does not exist or tab is not a member.
 pub async fn room_view(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -110,6 +152,11 @@ pub async fn room_view(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Leaves a room and returns updated lobby view.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room is not found or leave fails.
 pub async fn leave_room(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -121,6 +168,11 @@ pub async fn leave_room(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Adds an AI bot player to the waiting room.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room is already full or requester is not owner.
 pub async fn add_bot(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -132,6 +184,11 @@ pub async fn add_bot(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Removes an AI bot player from the waiting room.
+///
+/// # Errors
+///
+/// Returns `ApiError` if bot member is not found or requester is not owner.
 pub async fn remove_bot(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -143,6 +200,11 @@ pub async fn remove_bot(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Transfers room ownership to another member.
+///
+/// # Errors
+///
+/// Returns `ApiError` if target member does not exist or requester is not owner.
 pub async fn transfer_owner(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -154,6 +216,11 @@ pub async fn transfer_owner(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Starts match for the given room.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room cannot be started (e.g. insufficient players or wrong phase).
 pub async fn start_room(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -165,6 +232,11 @@ pub async fn start_room(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Dissolves the room by its owner.
+///
+/// # Errors
+///
+/// Returns `ApiError` if requester is not room owner or room not found.
 pub async fn dissolve_room(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -176,6 +248,11 @@ pub async fn dissolve_room(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Submits an in-game player command.
+///
+/// # Errors
+///
+/// Returns `ApiError` if OCC revision conflicts or command is invalid.
 pub async fn command(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -192,6 +269,11 @@ pub async fn command(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Advances single bot turn in the current match.
+///
+/// # Errors
+///
+/// Returns `ApiError` on OCC revision conflict or invalid turn owner.
 pub async fn step(
     State(service): State<Arc<GameService>>,
     Path(room_id): Path<String>,
@@ -203,6 +285,11 @@ pub async fn step(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Authenticates a tab as the local founder.
+///
+/// # Errors
+///
+/// Returns `ApiError` on incorrect password or authentication failure.
 pub async fn founder_auth(
     State(service): State<Arc<GameService>>,
     Json(request): Json<FounderAuthRequest>,
@@ -217,6 +304,11 @@ pub async fn founder_auth(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Fetches server settings snapshot.
+///
+/// # Errors
+///
+/// Returns `ApiError` on service failure.
 pub async fn server_settings(
     State(service): State<Arc<GameService>>,
     Query(query): Query<TabQuery>,
@@ -227,6 +319,11 @@ pub async fn server_settings(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Updates server settings (e.g. toggles LAN exposure).
+///
+/// # Errors
+///
+/// Returns `ApiError` if tab is not authenticated founder.
 pub async fn update_server_settings(
     State(service): State<Arc<GameService>>,
     Json(request): Json<ServerSettingsRequest>,
@@ -237,6 +334,7 @@ pub async fn update_server_settings(
         .map_err(|e| ApiError::from_service(&e))
 }
 
+/// Lists Model Context Protocol (MCP) tool schemas.
 pub async fn mcp_tools(
     State(service): State<Arc<GameService>>,
 ) -> Json<Vec<crate::interfaces::mcp::McpToolDefinition>> {
@@ -244,6 +342,11 @@ pub async fn mcp_tools(
     Json(dispatcher.tools().to_vec())
 }
 
+/// Dispatches an MCP tool call through HTTP POST.
+///
+/// # Errors
+///
+/// Returns `ApiError` if tool execution fails or parameter validation fails.
 pub async fn mcp_call(
     State(service): State<Arc<GameService>>,
     Json(request): Json<crate::interfaces::http::dtos::McpCallRequest>,

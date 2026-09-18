@@ -19,6 +19,132 @@ pub struct PlayerId(pub u32);
 #[serde(transparent)]
 pub struct TabId(pub String);
 
+impl TabId {
+    /// Returns the inner string slice.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<TabId> for String {
+    fn from(tab_id: TabId) -> Self {
+        tab_id.0
+    }
+}
+
+impl From<&TabId> for String {
+    fn from(tab_id: &TabId) -> Self {
+        tab_id.0.clone()
+    }
+}
+
+impl AsRef<str> for TabId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Execution mode distinguishing local LAN operation from public central server operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerMode {
+    /// Local / LAN mode: runs on local machine/WiFi, guarded loopback, temporary identities.
+    Local,
+    /// Public central server mode: runs behind reverse proxy on internet, unified user accounts.
+    Public,
+}
+
+impl ServerMode {
+    /// Returns human-readable Chinese description of the server mode.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Local => "本地局域网模式 (Local LAN)",
+            Self::Public => "公网中央服务器模式 (Public Server)",
+        }
+    }
+}
+
+/// Authentication tier or origin kind of a client identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityKind {
+    /// Temporary local browser tab or guest session.
+    TemporaryTab,
+    /// Authenticated central user account.
+    Authenticated,
+}
+
+/// Unified client identity representing either a local browser tab or an authenticated user.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub struct UserIdentity {
+    /// Stable identifier (e.g. `TabId` string "tab-xxxx" or central user id "user-12345").
+    pub id: String,
+    /// Human-friendly display name, if provided.
+    pub display_name: Option<String>,
+    /// Authentication tier of this identity.
+    pub kind: IdentityKind,
+}
+
+impl UserIdentity {
+    /// Creates a temporary identity from a browser tab ID.
+    #[must_use]
+    pub fn temporary_tab(tab_id: impl Into<String>) -> Self {
+        Self {
+            id: tab_id.into(),
+            display_name: None,
+            kind: IdentityKind::TemporaryTab,
+        }
+    }
+
+    /// Creates an authenticated identity for a registered user.
+    #[must_use]
+    pub fn authenticated(id: impl Into<String>, display_name: Option<String>) -> Self {
+        Self {
+            id: id.into(),
+            display_name,
+            kind: IdentityKind::Authenticated,
+        }
+    }
+
+    /// Returns the corresponding `TabId` for compatibility with existing tab-indexed operations.
+    #[must_use]
+    pub fn tab_id(&self) -> TabId {
+        TabId(self.id.clone())
+    }
+
+    /// Whether this identity is authenticated against a central user registry.
+    #[must_use]
+    pub fn is_authenticated(&self) -> bool {
+        self.kind == IdentityKind::Authenticated
+    }
+}
+
+impl From<&TabId> for UserIdentity {
+    fn from(tab: &TabId) -> Self {
+        Self::temporary_tab(&tab.0)
+    }
+}
+
+impl From<TabId> for UserIdentity {
+    fn from(tab: TabId) -> Self {
+        Self::temporary_tab(tab.0)
+    }
+}
+
+impl From<&UserIdentity> for TabId {
+    fn from(identity: &UserIdentity) -> Self {
+        identity.tab_id()
+    }
+}
+
+impl From<UserIdentity> for TabId {
+    fn from(identity: UserIdentity) -> Self {
+        identity.tab_id()
+    }
+}
+
 /// Case-insensitive five-character room identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
@@ -946,4 +1072,38 @@ pub struct RefereeDissolveResult {
     pub room_id: RoomId,
     /// Human-readable confirmation.
     pub message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_identity_conversions() {
+        let tab = TabId("tab-alpha-123".to_string());
+        let identity = UserIdentity::from(&tab);
+        assert_eq!(identity.id, "tab-alpha-123");
+        assert_eq!(identity.kind, IdentityKind::TemporaryTab);
+        assert!(!identity.is_authenticated());
+        assert_eq!(identity.tab_id(), tab);
+
+        let user = UserIdentity::authenticated("usr-456", Some("Commander".to_string()));
+        assert_eq!(user.id, "usr-456");
+        assert_eq!(user.display_name.as_deref(), Some("Commander"));
+        assert!(user.is_authenticated());
+        let user_tab: TabId = user.into();
+        assert_eq!(user_tab.0, "usr-456");
+    }
+
+    #[test]
+    fn test_server_mode_description() {
+        assert_eq!(
+            ServerMode::Local.description(),
+            "本地局域网模式 (Local LAN)"
+        );
+        assert_eq!(
+            ServerMode::Public.description(),
+            "公网中央服务器模式 (Public Server)"
+        );
+    }
 }

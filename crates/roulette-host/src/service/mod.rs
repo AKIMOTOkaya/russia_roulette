@@ -11,7 +11,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use roulette_domain::{
     BotSetupAction, LobbyView, PlayerCommand, RefereeDissolveResult, RefereeRoomSummary,
-    RefereeRoomView, RefereeStepResult, RoomMemberId, RoomView, TabId, Terrain, TerrainProperties,
+    RefereeRoomView, RefereeStepResult, RoomMemberId, RoomView, ServerMode, TabId, Terrain,
+    TerrainProperties,
 };
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +26,8 @@ pub const DEFAULT_TAB_TIMEOUT: Duration = Duration::from_secs(15);
 /// Server runtime settings snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerSettings {
+    /// Server mode: Local LAN vs Public Central Server.
+    pub server_mode: ServerMode,
     /// Whether the requesting tab has authenticated as founder.
     pub founder_authenticated: bool,
     /// Whether server is exposed to local area network.
@@ -35,6 +38,7 @@ pub struct ServerSettings {
 #[derive(Debug)]
 pub struct GameService {
     manager: Arc<GameManager>,
+    server_mode: ServerMode,
     tab_timeout: Duration,
     founder_password: String,
     founder_tabs: Mutex<HashSet<TabId>>,
@@ -48,12 +52,35 @@ impl GameService {
     pub fn new(manager: Arc<GameManager>, founder_password: String, lan_exposed: bool) -> Self {
         Self {
             manager,
+            server_mode: ServerMode::Local,
             tab_timeout: DEFAULT_TAB_TIMEOUT,
             founder_password,
             founder_tabs: Mutex::new(HashSet::new()),
             lan_exposed: AtomicBool::new(lan_exposed),
             idempotency_cache: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Sets the server execution mode (Local LAN vs Public Central Server).
+    #[must_use]
+    pub fn with_server_mode(mut self, server_mode: ServerMode) -> Self {
+        if server_mode == ServerMode::Public {
+            self.lan_exposed.store(true, Ordering::Relaxed);
+        }
+        self.server_mode = server_mode;
+        self
+    }
+
+    /// Creates a `GameService` configured for public central server deployment.
+    #[must_use]
+    pub fn new_public(manager: Arc<GameManager>, admin_token: String) -> Self {
+        Self::new(manager, admin_token, true).with_server_mode(ServerMode::Public)
+    }
+
+    /// Returns the current server execution mode.
+    #[must_use]
+    pub fn server_mode(&self) -> ServerMode {
+        self.server_mode
     }
 
     /// Sets a custom tab timeout duration.
@@ -252,8 +279,14 @@ impl GameService {
     ///
     /// Returns `ServiceError` if checking founder status fails.
     pub fn get_server_settings(&self, tab_id: &TabId) -> Result<ServerSettings, ServiceError> {
+        let is_founder = if self.server_mode == ServerMode::Public {
+            self.is_founder(tab_id).unwrap_or(false)
+        } else {
+            self.is_founder(tab_id)?
+        };
         Ok(ServerSettings {
-            founder_authenticated: self.is_founder(tab_id)?,
+            server_mode: self.server_mode,
+            founder_authenticated: is_founder,
             lan_exposed: self.lan_exposed.load(Ordering::Relaxed),
         })
     }

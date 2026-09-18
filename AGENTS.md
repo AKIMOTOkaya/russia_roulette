@@ -29,8 +29,13 @@
 - `roulette-domain` 只放可序列化领域契约，不读取网络、文件、时钟或随机源。
 - `roulette-core` 保持确定性；系统时间、外部随机源、HTTP、房间和进程生命周期不得进入 Core。
 - `roulette-host` 管理房间、成员、权限、Tab 与玩家映射、revision 校验和 Bot 调度，不认识 HTTP 或页面结构。
-- `roulette-backend` 负责 Axum 路由、进程状态、静态资源、连接来源与本地服务设置。
+- `roulette-backend` 负责 Axum 路由、进程状态、静态资源、连接来源与本地服务设置，作为公共引擎库为不同运行入口提供统一服务。
 - Bot 与真人走同一套 `PlayerCommand` 和 Core 规则入口，不直接修改状态。
+- **本地局域网与公网中央服务器双入口与防重复纪律**：
+  - 仓库构建区分 `roulette-local`（本地局域网模式，端口 8787，回环保护与临时创始人密码）与 `roulette-server`（公网中央服务器模式，端口 8080，放行反向代理公网流量与管理员凭据）两个独立进程，同时保留 `roulette-backend` 兼容入口。
+  - **严禁代码复制**：业务逻辑、路由处理器、MCP 工具、状态机与仓储 100% 共享，不可因为构建两个进程应用而产生相似或重复的功能代码；所有通用功能必须修改共同兼容的库代码。
+  - **差异压制在高层**：公网与局域网的区别（如反向代理放行、管理员 Token、用户认证）必须严格压制在最顶层（`ServerMode` 与 `UserIdentity` 转换层）。本地模式下通过高层将 `TabId` 转为 `IdentityKind::TemporaryTab`，未来公网认证直接转为 `IdentityKind::Authenticated`，下层业务用例与领域模型完全复用。
+
 
 ## 记录与事件语义
 

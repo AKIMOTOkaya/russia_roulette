@@ -4,9 +4,18 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[lib]
+name = "roulette_backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "roulette-backend"
+path = "src/main.rs"
+
 [dependencies]
 axum.workspace = true
 roulette-domain.workspace = true
+
 roulette-host.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }

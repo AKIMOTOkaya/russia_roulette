@@ -303,12 +303,21 @@ async function loadServerSettings() {
 }
 
 function renderServerSettings(settings) {
-  elements.founder_badge.textContent = settings.founder_authenticated ? "已认证" : "未认证";
-  elements.founder_badge.classList.toggle("verified", settings.founder_authenticated);
-  elements.lan_toggle.disabled = !settings.founder_authenticated;
-  elements.lan_toggle.checked = settings.lan_exposed;
-  elements.lan_description.textContent = settings.lan_exposed ? "局域网设备当前可以访问" : "当前仅本机可访问";
+  if (settings.server_mode === "public") {
+    elements.founder_badge.textContent = "公网服务器";
+    elements.founder_badge.classList.add("verified");
+    elements.lan_toggle.disabled = true;
+    elements.lan_toggle.checked = true;
+    elements.lan_description.textContent = "公网模式：开放公网反向代理流量";
+  } else {
+    elements.founder_badge.textContent = settings.founder_authenticated ? "已认证" : "未认证";
+    elements.founder_badge.classList.toggle("verified", settings.founder_authenticated);
+    elements.lan_toggle.disabled = !settings.founder_authenticated;
+    elements.lan_toggle.checked = settings.lan_exposed;
+    elements.lan_description.textContent = settings.lan_exposed ? "局域网设备当前可以访问" : "当前仅本机可访问";
+  }
 }
+
 
 function renderLobby(lobby) {
   room = null;

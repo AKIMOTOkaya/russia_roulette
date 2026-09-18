@@ -65,7 +65,7 @@ pub fn build_router(service: Arc<GameService>) -> Router {
         .route("/api/mcp/call", post(handlers::mcp_call))
         .layer(axum_middleware::from_fn_with_state(
             Arc::clone(&service),
-            middleware::lan_guard,
+            middleware::access_guard,
         ))
         .with_state(service)
 }
