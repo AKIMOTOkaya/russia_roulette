@@ -32,4 +32,5 @@ build/
 deploy/**/runtime/*
 !deploy/**/runtime/.gitkeep
 !deploy/**/runtime/build-info.md
-
+# Subprojects managed as independent repositories for marketplace publishing
+/clients/astrbot_plugin_russian_roulette/
