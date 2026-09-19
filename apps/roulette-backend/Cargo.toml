@@ -17,6 +17,7 @@ axum.workspace = true
 roulette-domain.workspace = true
 
 roulette-host.workspace = true
+roulette-renderer.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

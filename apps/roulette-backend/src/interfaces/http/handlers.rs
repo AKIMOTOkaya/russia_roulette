@@ -8,15 +8,15 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::{StatusCode, header},
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Response},
 };
 use roulette_domain::{LobbyView, RoomView, ServerMode, TabId, TerrainProperties, UserIdentity};
 use roulette_host::{CreateRoomConfig, GameService, JoinRoomConfig, ServerSettings};
 
 use crate::interfaces::http::dtos::{
     ApiError, CommandRequest, CreateRoomRequest, FounderAuthRequest, FounderAuthResponse,
-    HealthResponse, JoinRoomRequest, MemberRequest, ServerSettingsRequest, StartRoomRequest,
-    StepRequest, TabQuery, TabRequest,
+    HealthResponse, JoinRoomRequest, MemberRequest, RoomImageQuery, ServerSettingsRequest,
+    StartRoomRequest, StepRequest, TabQuery, TabRequest,
 };
 
 const INDEX_HTML: &str = include_str!("../../../../../clients/web/index.html");
@@ -359,4 +359,33 @@ pub async fn mcp_call(
             status: StatusCode::BAD_REQUEST,
             message: e.to_string(),
         })
+}
+
+/// Renders an authoritative tactical HUD card image for a room in PNG or SVG format.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room is not found or rasterization fails.
+pub async fn render_room_image(
+    State(service): State<Arc<GameService>>,
+    Path(room_id): Path<String>,
+    Query(query): Query<RoomImageQuery>,
+) -> Result<Response, ApiError> {
+    let room = service
+        .referee_inspect_room(&room_id)
+        .map_err(|e| ApiError::from_service(&e))?;
+
+    let format_str = query.format.as_deref().unwrap_or("png").to_lowercase();
+    if format_str == "svg" {
+        let svg = roulette_renderer::render_match_svg(&room);
+        Ok((
+            [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
+            svg,
+        )
+            .into_response())
+    } else {
+        let png = roulette_renderer::render_match_png(&room)
+            .map_err(|e| ApiError::internal(format!("render png failed: {e}")))?;
+        Ok(([(header::CONTENT_TYPE, "image/png")], png).into_response())
+    }
 }

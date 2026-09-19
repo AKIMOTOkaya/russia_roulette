@@ -22,7 +22,9 @@ pedantic = "warn"
 roulette-domain = { path = "crates/roulette-domain" }
 roulette-core = { path = "crates/roulette-core" }
 roulette-host = { path = "crates/roulette-host" }
+roulette-renderer = { path = "crates/roulette-renderer" }
 roulette-backend = { path = "apps/roulette-backend" }
+resvg = "0.48"
 axum = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

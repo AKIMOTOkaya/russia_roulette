@@ -499,7 +499,39 @@ mod tests {
         let final_rev = force_res["new_revision"].as_u64().unwrap();
         assert!(final_rev > match_rev);
 
-        // 8. referee_list_rooms
+        // 8. referee_render_room_image (SVG and PNG test)
+        let render_svg = dispatcher
+            .dispatch(
+                "referee_render_room_image",
+                &json!({
+                    "room_id": room_id,
+                    "format": "svg"
+                }),
+            )
+            .expect("referee render room svg");
+        assert_eq!(render_svg["format"], "svg");
+        assert!(render_svg["svg"].as_str().unwrap().contains("<svg"));
+
+        let render_png = dispatcher
+            .dispatch(
+                "referee_render_room_image",
+                &json!({
+                    "room_id": room_id,
+                    "format": "png"
+                }),
+            )
+            .expect("referee render room png");
+        assert_eq!(render_png["format"], "png");
+        assert_eq!(render_png["content_type"], "image/png");
+        assert!(
+            render_png["data_uri"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
+        assert!(render_png["size_bytes"].as_u64().unwrap() > 1024);
+
+        // 9. referee_list_rooms
         let list_res = dispatcher
             .dispatch("referee_list_rooms", &json!({}))
             .expect("referee list rooms");

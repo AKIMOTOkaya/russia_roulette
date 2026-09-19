@@ -106,6 +106,15 @@ pub struct RefereeDissolveRoomParams {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct RefereeQueryRulesParams {}
 
+/// Parameters for `referee_render_room_image`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeRenderRoomImageParams {
+    /// Five-character room identifier.
+    pub room_id: String,
+    /// Output format: "png" (default base64 data URI) or "svg" (raw SVG XML).
+    pub format: Option<String>,
+}
+
 /// Parameters for `create_game_room`.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CreateGameRoomParams {
@@ -233,6 +242,12 @@ pub fn standard_tool_definitions() -> Vec<McpToolDefinition> {
             name: "referee_query_rules".to_string(),
             description: "查询权威规则、特殊地形硬度属性与穿甲弹破坏机制".to_string(),
             input_schema: to_value(schemars::schema_for!(RefereeQueryRulesParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_render_room_image".to_string(),
+            description: "裁判将当前房间与战术棋盘按规则渲染合成精美HUD卡片图片（PNG base64或SVG格式），便于在QQ等IM会话中直观输出战况".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeRenderRoomImageParams))
                 .unwrap_or_default(),
         },
         McpToolDefinition {

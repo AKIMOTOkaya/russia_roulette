@@ -13,7 +13,8 @@ use serde_json::json;
 use crate::interfaces::mcp::schema::{
     RefereeCreateRoomParams, RefereeDissolveRoomParams, RefereeForceCommandParams,
     RefereeInspectRoomParams, RefereeListRoomsParams, RefereeQueryRulesParams,
-    RefereeSetupBotsParams, RefereeStartMatchParams, RefereeStepBotParams,
+    RefereeRenderRoomImageParams, RefereeSetupBotsParams, RefereeStartMatchParams,
+    RefereeStepBotParams,
 };
 
 /// Russian Roulette Referee and Moderator MCP server.
@@ -166,6 +167,47 @@ impl RussianRouletteMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let rules = self.service.get_terrain_rules();
         Ok(format_success(&rules))
+    }
+
+    /// Render match state and tactical board into an image (PNG base64 or SVG).
+    #[tool(
+        description = "裁判将当前房间与战术棋盘按规则渲染合成精美HUD卡片图片（PNG base64或SVG格式），便于在QQ等IM会话中直观输出战况"
+    )]
+    async fn referee_render_room_image(
+        &self,
+        Parameters(params): Parameters<RefereeRenderRoomImageParams>,
+    ) -> Result<CallToolResult, McpError> {
+        match self.service.referee_inspect_room(&params.room_id) {
+            Ok(room) => {
+                if params.format.as_deref() == Some("svg") {
+                    let svg = roulette_renderer::render_match_svg(&room);
+                    Ok(format_success(&json!({
+                        "room_id": params.room_id,
+                        "format": "svg",
+                        "content_type": "image/svg+xml",
+                        "svg": svg,
+                    })))
+                } else {
+                    match roulette_renderer::render_match_png(&room) {
+                        Ok(png_bytes) => {
+                            let b64 = crate::interfaces::mcp::dispatcher::base64_encode(&png_bytes);
+                            Ok(format_success(&json!({
+                                "room_id": params.room_id,
+                                "format": "png",
+                                "content_type": "image/png",
+                                "size_bytes": png_bytes.len(),
+                                "base64": b64,
+                                "data_uri": format!("data:image/png;base64,{b64}"),
+                            })))
+                        }
+                        Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                            "Render error: {err}"
+                        ))])),
+                    }
+                }
+            }
+            Err(err) => Ok(format_service_error(&err)),
+        }
     }
 }
 

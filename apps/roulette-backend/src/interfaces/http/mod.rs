@@ -42,6 +42,10 @@ pub fn build_router(service: Arc<GameService>) -> Router {
         .route("/api/rooms", post(handlers::create_room))
         .route("/api/rooms/join", post(handlers::join_room))
         .route("/api/rooms/{room_id}", get(handlers::room_view))
+        .route(
+            "/api/rooms/{room_id}/image",
+            get(handlers::render_room_image),
+        )
         .route("/api/rooms/{room_id}/leave", post(handlers::leave_room))
         .route("/api/rooms/{room_id}/bots/add", post(handlers::add_bot))
         .route(

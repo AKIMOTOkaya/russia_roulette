@@ -195,6 +195,40 @@ impl McpDispatcher {
                 let rules = self.service.get_terrain_rules();
                 to_value(rules).map_err(|e| McpError::execution_failed(e.to_string()))
             }
+            "referee_render_room_image" => {
+                let room_id: String = parse_arg(arguments, "room_id")?;
+                let format_str: Option<String> = arguments
+                    .get("format")
+                    .and_then(Value::as_str)
+                    .map(str::to_lowercase);
+                let room = self
+                    .service
+                    .referee_inspect_room(&room_id)
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+
+                if format_str.as_deref() == Some("svg") {
+                    let svg = roulette_renderer::render_match_svg(&room);
+                    Ok(serde_json::json!({
+                        "room_id": room_id,
+                        "format": "svg",
+                        "content_type": "image/svg+xml",
+                        "svg": svg,
+                    }))
+                } else {
+                    let png_bytes = roulette_renderer::render_match_png(&room)
+                        .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                    let base64_encoded = base64_encode(&png_bytes);
+                    let data_uri = format!("data:image/png;base64,{base64_encoded}");
+                    Ok(serde_json::json!({
+                        "room_id": room_id,
+                        "format": "png",
+                        "content_type": "image/png",
+                        "size_bytes": png_bytes.len(),
+                        "base64": base64_encoded,
+                        "data_uri": data_uri,
+                    }))
+                }
+            }
             "list_lobby_rooms" => {
                 let tab_id: String = parse_arg(arguments, "tab_id")?;
                 let view = self
@@ -305,4 +339,29 @@ fn parse_arg<T: serde::de::DeserializeOwned>(args: &Value, name: &str) -> Result
             serde_json::from_value(val)
                 .map_err(|e| McpError::invalid_params(format!("invalid parameter '{name}': {e}")))
         })
+}
+
+/// Encodes raw bytes into standard Base64 string without external dependencies.
+#[must_use]
+pub fn base64_encode(data: &[u8]) -> String {
+    const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] } else { 0 };
+        result.push(CHARSET[(b0 >> 2) as usize] as char);
+        result.push(CHARSET[(((b0 & 3) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            result.push(CHARSET[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            result.push('=');
+        }
+        if chunk.len() > 2 {
+            result.push(CHARSET[(b2 & 0x3f) as usize] as char);
+        } else {
+            result.push('=');
+        }
+    }
+    result
 }

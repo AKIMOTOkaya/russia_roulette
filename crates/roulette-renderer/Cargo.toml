@@ -1,0 +1,13 @@
+[package]
+name = "roulette-renderer"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+roulette-domain.workspace = true
+resvg.workspace = true
+thiserror = "2.0"

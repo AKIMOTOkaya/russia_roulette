@@ -137,6 +137,13 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+/// Query parameters for room image rendering.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RoomImageQuery {
+    /// Desired format: "png" (default) or "svg".
+    pub format: Option<String>,
+}
+
 /// API error wrapper converting service errors to HTTP responses.
 pub struct ApiError {
     /// HTTP status code.
@@ -146,6 +153,15 @@ pub struct ApiError {
 }
 
 impl ApiError {
+    /// Constructs an internal server error with message.
+    #[must_use]
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: msg.into(),
+        }
+    }
+
     /// Maps a `ServiceError` into an `ApiError` with appropriate HTTP status code.
     #[must_use]
     pub fn from_service(error: &ServiceError) -> Self {
