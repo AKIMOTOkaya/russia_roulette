@@ -285,21 +285,24 @@ fn test_render_non_square_board() {
 
     let svg = render_board_svg(&cells, &players, Some(PlayerId(1)), &[], Some(96));
     assert!(svg.starts_with("<svg"));
-    // 7 cols: 7 * 96 + 6 * 6 + 72 = 672 + 36 + 72 = 780
-    // 4 rows: 4 * 96 + 3 * 6 + 72 = 384 + 18 + 72 = 474
+    // 7 cols: 7 * 96 + 48 = 672 + 48 = 720
+    // 4 rows: 4 * 96 + 48 = 384 + 48 = 432
     assert!(
-        svg.contains("width=\"780\""),
-        "Expected width 780 for 7 cols"
+        svg.contains("width=\"720\""),
+        "Expected width 720 for 7 cols"
     );
     assert!(
-        svg.contains("height=\"474\""),
-        "Expected height 474 for 4 rows"
+        svg.contains("height=\"432\""),
+        "Expected height 432 for 4 rows"
     );
-    assert!(svg.contains("viewBox=\"0 0 780 474\""));
-    // Verify coordinate rulers: columns A..G, rows 1..4
-    assert!(svg.contains(">A<"));
-    assert!(svg.contains(">G<"));
-    assert!(svg.contains(">4<"));
+    assert!(svg.contains("viewBox=\"0 0 720 432\""));
+    // Verify coordinate rulers are completely removed
+    assert!(!svg.contains(">A<"));
+    assert!(!svg.contains(">G<"));
+    assert!(!svg.contains(">4<"));
+    // Verify seamless board clipping
+    assert!(svg.contains("id=\"board-clip\""));
+    assert!(svg.contains("clip-path=\"url(#board-clip)\""));
 
     let png = render_board_png(&cells, &players, Some(PlayerId(1)), &[], Some(96))
         .expect("failed to render non-square board PNG");

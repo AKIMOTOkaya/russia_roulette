@@ -35,9 +35,9 @@ impl BoardMetrics {
             cols,
             rows,
             cell_size: 80,
-            cell_gap: 6,
-            padding: 36,
-            ruler_offset: 18,
+            cell_gap: 0,
+            padding: 24,
+            ruler_offset: 0,
         }
     }
 
@@ -48,9 +48,9 @@ impl BoardMetrics {
             cols,
             rows,
             cell_size,
-            cell_gap: 6,
-            padding: 36,
-            ruler_offset: 18,
+            cell_gap: 0,
+            padding: 24,
+            ruler_offset: 0,
         }
     }
 
@@ -114,7 +114,7 @@ impl Default for LayoutMetrics {
             canvas_width: 1080,
             canvas_height: 720,
             cell_size: 76,
-            cell_gap: 8,
+            cell_gap: 0,
             board_origin_x: 64,
             board_origin_y: 130,
         }

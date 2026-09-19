@@ -30,7 +30,6 @@ impl BoardRenderer {
         let origin_x = metrics.board_origin_x;
         let origin_y = metrics.board_origin_y;
         let cell_size = metrics.cell_size;
-        let gap = metrics.cell_gap;
 
         // Determine actual columns and rows dynamically from cells, falling back to map_size
         let max_x = cells.iter().map(|c| c.position.x).max().unwrap_or(0);
@@ -41,52 +40,24 @@ impl BoardRenderer {
         svg.push_str("  <!-- TACTICAL BOARD SECTION -->\n");
         svg.push_str("  <g id=\"tactical-board\">\n");
 
-        // Continuous board background plate
-        let board_total_w =
-            u32::from(cols) * cell_size + u32::from(cols.saturating_sub(1)) * gap + 28;
-        let board_total_h =
-            u32::from(rows) * cell_size + u32::from(rows.saturating_sub(1)) * gap + 28;
+        // Seamless board background plate (pure white with subtle border and soft shadow)
+        let board_total_w = u32::from(cols) * cell_size;
+        let board_total_h = u32::from(rows) * cell_size;
         svg.push_str(&format!(
-            "    <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"12\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" />\n",
-            origin_x - 14,
-            origin_y - 14,
-            board_total_w,
-            board_total_h,
+            "    <rect x=\"{origin_x}\" y=\"{origin_y}\" width=\"{board_total_w}\" height=\"{board_total_h}\" rx=\"14\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" />\n",
             Theme::BOARD_BG.to_svg_color(),
             Theme::BOARD_BORDER.to_svg_color()
         ));
 
-        // Coordinate headers (X axis at top)
-        for x in 0..cols {
-            let cx = origin_x + u32::from(x) * (cell_size + gap) + cell_size / 2;
-            let cy = origin_y - 6;
-            let col_label = (b'A' + x) as char;
-            svg.push_str(&format!(
-                "    <text x=\"{cx}\" y=\"{cy}\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"middle\">{col_label}</text>\n",
-                Theme::TEXT_MUTED.to_svg_color()
-            ));
-        }
-
-        // Coordinate headers (Y axis at left)
-        for y in 0..rows {
-            let cx = origin_x - 8;
-            let cy = origin_y + u32::from(y) * (cell_size + gap) + cell_size / 2 + 4;
-            svg.push_str(&format!(
-                "    <text x=\"{cx}\" y=\"{cy}\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"end\">{}</text>\n",
-                Theme::TEXT_MUTED.to_svg_color(),
-                y + 1
-            ));
-        }
-
-        // Grid cells & Terrains
+        // Grid cells & Terrains (Seamless Ground Tint Layer)
         svg.push_str("    <g id=\"terrain-layer\">\n");
         for y in 0..rows {
             for x in 0..cols {
                 let cell_pos = Position { x, y };
                 let cell = cells.iter().find(|c| c.position == cell_pos);
                 let terrain = cell.map_or(Terrain::Empty, |c| c.terrain);
-                let px = origin_x + u32::from(x) * (cell_size + gap);
-                let py = origin_y + u32::from(y) * (cell_size + gap);
+                let px = origin_x + u32::from(x) * cell_size;
+                let py = origin_y + u32::from(y) * cell_size;
 
                 svg.push_str(&TerrainAssetRenderer::render(px, py, cell_size, terrain));
             }
@@ -98,8 +69,8 @@ impl BoardRenderer {
         for y in 0..rows {
             for x in 0..cols {
                 let cell_pos = Position { x, y };
-                let px = origin_x + u32::from(x) * (cell_size + gap);
-                let py = origin_y + u32::from(y) * (cell_size + gap);
+                let px = origin_x + u32::from(x) * cell_size;
+                let py = origin_y + u32::from(y) * cell_size;
 
                 if let Some(player) = players.iter().find(|p| p.position == Some(cell_pos)) {
                     let cx = px + cell_size / 2;
@@ -145,6 +116,11 @@ impl BoardRenderer {
         let total_w = metrics.total_width();
         let total_h = metrics.total_height();
 
+        let grid_x = metrics.padding;
+        let grid_y = metrics.padding;
+        let grid_w = u32::from(cols) * cell_size;
+        let grid_h = u32::from(rows) * cell_size;
+
         let mut svg = format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{total_w}\" height=\"{total_h}\" viewBox=\"0 0 {total_w} {total_h}\">\n"
         );
@@ -154,50 +130,28 @@ impl BoardRenderer {
         svg.push_str("    <style>\n");
         svg.push_str("      text { font-family: 'MiSans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', 'DejaVu Sans', sans-serif; }\n");
         svg.push_str("    </style>\n");
+        // Clip path for seamless board rounded boundaries
+        svg.push_str(&format!(
+            "    <clipPath id=\"board-clip\">\n      <rect x=\"{grid_x}\" y=\"{grid_y}\" width=\"{grid_w}\" height=\"{grid_h}\" rx=\"16\" />\n    </clipPath>\n"
+        ));
         svg.push_str("  </defs>\n");
         svg.push_str(crate::assets::render_shared_defs());
 
-        // Background tactical plate (Canvas pure white)
+        // Background canvas plate (Pure White)
         svg.push_str(&format!(
-            "  <!-- MAP BACKGROUND -->\n  <rect width=\"{total_w}\" height=\"{total_h}\" fill=\"{}\" />\n",
+            "  <!-- MAP CANVAS BACKGROUND -->\n  <rect width=\"{total_w}\" height=\"{total_h}\" fill=\"{}\" />\n",
             Theme::CANVAS_BG.to_svg_color()
         ));
 
-        // Seamless ground board plate
-        let grid_x = metrics.padding - 10;
-        let grid_y = metrics.padding - 10;
-        let grid_w = total_w - grid_x * 2;
-        let grid_h = total_h - grid_y * 2;
+        // Seamless ground board plate (Whole board card with soft drop shadow)
         svg.push_str(&format!(
-            "  <rect x=\"{grid_x}\" y=\"{grid_y}\" width=\"{grid_w}\" height=\"{grid_h}\" rx=\"14\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" />\n",
+            "  <!-- SEAMLESS TACTICAL BOARD PLATE -->\n  <rect x=\"{grid_x}\" y=\"{grid_y}\" width=\"{grid_w}\" height=\"{grid_h}\" rx=\"16\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.5\" filter=\"url(#fx-drop-shadow)\" />\n",
             Theme::BOARD_BG.to_svg_color(),
             Theme::BOARD_BORDER.to_svg_color()
         ));
 
-        // Coordinate rulers: Columns (top)
-        for x in 0..cols {
-            let cx = metrics.cell_x(x) + cell_size / 2;
-            let cy = metrics.padding - 12;
-            let col_label = (b'A' + x) as char;
-            svg.push_str(&format!(
-                "  <text x=\"{cx}\" y=\"{cy}\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"middle\">{col_label}</text>\n",
-                Theme::TEXT_MUTED.to_svg_color()
-            ));
-        }
-
-        // Coordinate rulers: Rows (left)
-        for y in 0..rows {
-            let cx = metrics.padding - 14;
-            let cy = metrics.cell_y(y) + cell_size / 2 + 4;
-            svg.push_str(&format!(
-                "  <text x=\"{cx}\" y=\"{cy}\" font-size=\"12\" font-weight=\"bold\" fill=\"{}\" text-anchor=\"end\">{}</text>\n",
-                Theme::TEXT_MUTED.to_svg_color(),
-                y + 1
-            ));
-        }
-
-        // Layer 1: Procedural Terrain Patches (Continuous ground dots for Empty, colored patches for specials)
-        svg.push_str("  <!-- TERRAIN LAYER -->\n  <g id=\"terrain-layer\">\n");
+        // Layer 1: Seamless Terrain Tint Layer (Clipped to board rounded corners, zero gap, no boxes)
+        svg.push_str("  <!-- TERRAIN TINT LAYER -->\n  <g id=\"terrain-layer\" clip-path=\"url(#board-clip)\">\n");
         for y in 0..rows {
             for x in 0..cols {
                 let cell_pos = Position { x, y };

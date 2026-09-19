@@ -18,41 +18,37 @@ impl TerrainAssetRenderer {
 
         match terrain {
             Terrain::Empty => {
-                // Continuous seamless ground: do NOT render a bounding box or tile background.
-                // Just an extremely subtle micro-dot at the cell center for spatial reference.
-                svg.push_str(&format!(
-                    "    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"1.5\" fill=\"#cbd5e1\" opacity=\"0.5\" />\n"
-                ));
+                // Continuous seamless ground: naturally transparent against the board plate.
+                // No bounding box, no stroke, no distracting dots.
             }
             Terrain::Wall => {
-                // Solid slate masonry barrier (H:2) - tactile obstacle block, no text
+                // Slate masonry barrier: seamless solid ground tint without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-wall)\" stroke=\"#334155\" stroke-width=\"1\" filter=\"url(#fx-drop-shadow)\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-wall)\" />\n"
                 ));
                 // Masonry horizontal mortar seams
                 let h1 = py + cell_size / 3;
                 let h2 = py + (cell_size * 2) / 3;
                 svg.push_str(&format!(
-                    "    <line x1=\"{}\" y1=\"{h1}\" x2=\"{}\" y2=\"{h1}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.4\" />\n",
-                    px + 6, px + cell_size - 6
+                    "    <line x1=\"{px}\" y1=\"{h1}\" x2=\"{}\" y2=\"{h1}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.35\" />\n",
+                    px + cell_size
                 ));
                 svg.push_str(&format!(
-                    "    <line x1=\"{}\" y1=\"{h2}\" x2=\"{}\" y2=\"{h2}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.4\" />\n",
-                    px + 6, px + cell_size - 6
+                    "    <line x1=\"{px}\" y1=\"{h2}\" x2=\"{}\" y2=\"{h2}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.35\" />\n",
+                    px + cell_size
                 ));
                 // Masonry vertical staggered seams
                 svg.push_str(&format!(
-                    "    <line x1=\"{cx}\" y1=\"{}\" x2=\"{cx}\" y2=\"{h1}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.4\" />\n",
-                    py + 6
+                    "    <line x1=\"{cx}\" y1=\"{py}\" x2=\"{cx}\" y2=\"{h1}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.35\" />\n"
                 ));
                 let v2 = px + cell_size / 4;
                 let v3 = px + (cell_size * 3) / 4;
                 svg.push_str(&format!(
-                    "    <line x1=\"{v2}\" y1=\"{h1}\" x2=\"{v2}\" y2=\"{h2}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.4\" />\n"
+                    "    <line x1=\"{v2}\" y1=\"{h1}\" x2=\"{v2}\" y2=\"{h2}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.35\" />\n"
                 ));
                 svg.push_str(&format!(
-                    "    <line x1=\"{v3}\" y1=\"{h2}\" x2=\"{v3}\" y2=\"{}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.4\" />\n",
-                    py + cell_size - 6
+                    "    <line x1=\"{v3}\" y1=\"{h2}\" x2=\"{v3}\" y2=\"{}\" stroke=\"#1e293b\" stroke-width=\"1.5\" opacity=\"0.35\" />\n",
+                    py + cell_size
                 ));
                 // Central reinforced diamond armor crest
                 svg.push_str(&format!(
@@ -61,17 +57,17 @@ impl TerrainAssetRenderer {
                 ));
             }
             Terrain::Crate => {
-                // Warm caramel wood obstacle (H:1) - diagonal cross bracing, no text
+                // Warm caramel wood tint: seamless ground block without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-crate)\" stroke=\"#f97316\" stroke-width=\"1\" filter=\"url(#fx-drop-shadow)\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-crate)\" />\n"
                 ));
                 // Timber cross bracing
                 svg.push_str(&format!(
-                    "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#c2410c\" stroke-width=\"2.5\" opacity=\"0.7\" stroke-linecap=\"round\" />\n",
+                    "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#c2410c\" stroke-width=\"2.5\" opacity=\"0.6\" stroke-linecap=\"round\" />\n",
                     px + 8, py + 8, px + cell_size - 8, py + cell_size - 8
                 ));
                 svg.push_str(&format!(
-                    "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#c2410c\" stroke-width=\"2.5\" opacity=\"0.7\" stroke-linecap=\"round\" />\n",
+                    "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#c2410c\" stroke-width=\"2.5\" opacity=\"0.6\" stroke-linecap=\"round\" />\n",
                     px + cell_size - 8, py + 8, px + 8, py + cell_size - 8
                 ));
                 // Center fastener stud
@@ -81,9 +77,9 @@ impl TerrainAssetRenderer {
                 ));
             }
             Terrain::Water => {
-                // Serene soft sky blue dynamic water pool - wave curves, no text
+                // Soft sky blue water ground tint: seamless pool without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-water)\" stroke=\"#7dd3fc\" stroke-width=\"1\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-water)\" />\n"
                 ));
                 let w1_y = py + cell_size / 3;
                 svg.push_str(&format!(
@@ -100,9 +96,9 @@ impl TerrainAssetRenderer {
                 ));
             }
             Terrain::Ice => {
-                // Crystalline glacial ice surface - fractured rays and gleams, no text
+                // Glacial ice ground tint: seamless surface without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-ice)\" stroke=\"#bae6fd\" stroke-width=\"1\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-ice)\" />\n"
                 ));
                 svg.push_str(&format!(
                     "    <path d=\"M {} {} L {cx} {cy} L {} {} M {cx} {cy} L {} {}\" fill=\"none\" stroke=\"#0284c7\" stroke-width=\"1.5\" opacity=\"0.6\" stroke-linecap=\"round\" />\n",
@@ -118,9 +114,9 @@ impl TerrainAssetRenderer {
                 ));
             }
             Terrain::Mine => {
-                // Concealed buried minefield - concentric hazard perimeter, no text
+                // Concealed buried minefield ground tint: seamless hazard without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-mine)\" stroke=\"#f87171\" stroke-width=\"1\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-mine)\" />\n"
                 ));
                 svg.push_str(&format!(
                     "    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"16\" fill=\"none\" stroke=\"#ef4444\" stroke-width=\"1.2\" stroke-dasharray=\"4 3\" opacity=\"0.7\" />\n"
@@ -133,9 +129,9 @@ impl TerrainAssetRenderer {
                 ));
             }
             Terrain::Medkit => {
-                // Fresh mint shield / medical pod - clean cross & shield ring, no text
+                // Fresh mint shield / medical ground tint: seamless area without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-medkit)\" stroke=\"#34d399\" stroke-width=\"1\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-medkit)\" />\n"
                 ));
                 let arm_len = 8;
                 let arm_w = 4;
@@ -152,21 +148,23 @@ impl TerrainAssetRenderer {
                 ));
             }
             Terrain::HighGround => {
-                // Pastel warm gold elevation advantage - contour ring & upward chevrons, no text
+                // High ground elevation tint: seamless area without outer stroke or box
                 svg.push_str(&format!(
-                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"url(#grad-highground)\" stroke=\"#facc15\" stroke-width=\"1\" />\n"
+                    "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" fill=\"url(#grad-highground)\" />\n"
+                ));
+                // Elegant curved elevation contour lines
+                svg.push_str(&format!(
+                    "    <path d=\"M {} {} Q {cx} {} {} {}\" fill=\"none\" stroke=\"#ca8a04\" stroke-width=\"1.5\" opacity=\"0.5\" stroke-linecap=\"round\" />\n",
+                    cx - 20, cy + 18, cy + 4, cx + 20, cy + 18
                 ));
                 svg.push_str(&format!(
-                    "    <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"6\" fill=\"none\" stroke=\"#ca8a04\" stroke-width=\"1\" opacity=\"0.5\" />\n",
-                    px + 10, py + 10, cell_size - 20, cell_size - 20
+                    "    <path d=\"M {} {} Q {cx} {} {} {}\" fill=\"none\" stroke=\"#ca8a04\" stroke-width=\"1.5\" opacity=\"0.6\" stroke-linecap=\"round\" />\n",
+                    cx - 14, cy + 10, cy - 2, cx + 14, cy + 10
                 ));
+                // Peak vantage chevrons
                 svg.push_str(&format!(
                     "    <path d=\"M {} {} L {cx} {} L {} {}\" fill=\"none\" stroke=\"#a16207\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n",
                     cx - 8, cy + 2, cy - 6, cx + 8, cy + 2
-                ));
-                svg.push_str(&format!(
-                    "    <path d=\"M {} {} L {cx} {} L {} {}\" fill=\"none\" stroke=\"#a16207\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n",
-                    cx - 8, cy + 8, cy, cx + 8, cy + 8
                 ));
             }
         }
