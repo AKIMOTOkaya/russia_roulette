@@ -151,7 +151,7 @@ flowchart TD
 - `clients/astrbot_plugin_russian_roulette`：AstrBot 聊天机器人插件（独立 Git 仓库子项目）。作为对局主持人与战况展示端，让 QQ/IM 用户通过纯指令（`/rr`、`/轮盘`）参与对战，通过 MCP 协议与 Rust 游戏引擎对接。采用两项关键设计：
   - **信息压缩 (Compression)**：使用精炼的 Emoji 符号代理长文本叙事与战报动作（如 `P1🤖 🚶↑` 位移、`P2🤖 🔫→` 射击、`P3🤖 ⏳跳过`、`💥 击毙`、`💨 空弹`、`🛡️ 护盾`）；全员席位压缩为单行徽章流（如 `👥 席位 (3/3): P1·Bot 1🤖💚(3,3) 👉 | P2·Bot 2🤖💚(1,4) | P3·Bot 3🤖💀`），直观清晰且大幅降低手机窄屏阅读压力；
   - **消息分块分离 (Separation)**：基于 AstrBot 异步生成器机制，将原本混在一起的长报文按逻辑切分为独立气泡顺序推送：① 天气异动/终局/淘汰公告；② 裁判裁定行动摘要；③ 战术棋盘与席位地图；④ 专属轮次行动声明（若轮到真人玩家则单独 `@玩家` 并提示操作语法，若轮到 Bot 则单独声明位置与步进提示）。
-  - 为满足独立推送到 GitHub 并上架 AstrBot 插件市场的要求，该目录被主仓库 `.gitignore` 忽略，并配置独立的 Git 仓库与 AstrBot 插件规范文件（`metadata.yaml`、`_conf_schema.json`、Logo 与独立测试套件）。
+  - 为满足独立推送到 GitHub 并上架 AstrBot 插件市场的要求，该目录被主仓库 `.gitignore` 忽略，配置独立的 Git 仓库、开发与审核合规规范（详见 [`docs/rules/astrbot-plugin-rules.md`](file:///Users/akimotokaya/Documents/RussianRoulette/docs/rules/astrbot-plugin-rules.md)）与 AstrBot 插件规范文件（`metadata.yaml`、`_conf_schema.json`、Logo 与独立测试套件）。
 - `protocol`：作为 Rust、TypeScript、Python 等语言共享契约的来源。
 - `scripts`：允许使用适合任务的 Shell、Python、JavaScript 或 Rust，但必须记录运行环境和输入输出。
 

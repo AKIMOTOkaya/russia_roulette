@@ -12,6 +12,7 @@
   - `docs/rules/local-web-mvp-rules.md`
   - `docs/development/local-web-mvp.md`
   - `clients/web/README.md`
+- 涉及 AstrBot 插件时，阅读 `docs/rules/astrbot-plugin-rules.md` 与 `clients/astrbot_plugin_russian_roulette/README.md`。
 - 涉及部署时，阅读 `docs/project/deployment.md` 和 `deploy/` 内该项目自己的文件；不要修改其他应用或外部服务器影子目录，除非用户本次明确要求。
 - 开始修改前检查 `git status`。已有修改默认属于用户，保留无关内容，不覆盖、不重置。
 
