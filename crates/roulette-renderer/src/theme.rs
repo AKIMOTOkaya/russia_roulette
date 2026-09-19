@@ -28,16 +28,16 @@ impl BoardMetrics {
     pub fn from_cells(cells: &[CellView], default_size: u8) -> Self {
         let max_x = cells.iter().map(|c| c.position.x).max().unwrap_or(0);
         let max_y = cells.iter().map(|c| c.position.y).max().unwrap_or(0);
-        let cols = (max_x + 1).max(default_size);
-        let rows = (max_y + 1).max(default_size);
+        let cols = (max_x + 1).max(default_size).max(1);
+        let rows = (max_y + 1).max(default_size).max(1);
 
         Self {
             cols,
             rows,
-            cell_size: 96,
-            cell_gap: 8,
-            padding: 40,
-            ruler_offset: 24,
+            cell_size: 80,
+            cell_gap: 6,
+            padding: 36,
+            ruler_offset: 18,
         }
     }
 
@@ -48,9 +48,9 @@ impl BoardMetrics {
             cols,
             rows,
             cell_size,
-            cell_gap: 8,
-            padding: 44,
-            ruler_offset: 26,
+            cell_gap: 6,
+            padding: 36,
+            ruler_offset: 18,
         }
     }
 
@@ -180,101 +180,109 @@ pub struct TerrainPalette {
     pub emblem: Color,
 }
 
-/// Visual theme defining the dark cyber-noir tactical aesthetic.
+/// Visual theme defining the minimalist light aesthetic.
 pub struct Theme;
 
 impl Theme {
-    /// Canvas dark background color.
-    pub const CANVAS_BG: Color = Color::rgb(15, 19, 26);
-    /// Card frame background.
-    pub const CARD_BG: Color = Color::rgb(22, 27, 38);
+    /// Pure white canvas background color.
+    pub const CANVAS_BG: Color = Color::rgb(255, 255, 255);
+    /// Continuous tactical board ground base.
+    pub const BOARD_BG: Color = Color::rgb(248, 250, 252);
+    /// Subtle board border line.
+    pub const BOARD_BORDER: Color = Color::rgb(226, 232, 240);
+    /// Grid intersection mark / subtle micro-dot color.
+    pub const GRID_DOT: Color = Color::rgba(203, 213, 225, 600);
+
+    /// Card frame background (legacy / waiting card).
+    pub const CARD_BG: Color = Color::rgb(248, 250, 252);
     /// Subtle frame border.
-    pub const CARD_BORDER: Color = Color::rgb(39, 49, 66);
+    pub const CARD_BORDER: Color = Color::rgb(226, 232, 240);
     /// Inner card section background.
-    pub const SECTION_BG: Color = Color::rgb(27, 34, 48);
+    pub const SECTION_BG: Color = Color::rgb(241, 245, 249);
 
-    /// Primary bright white text.
-    pub const TEXT_PRIMARY: Color = Color::rgb(241, 245, 249);
-    /// Secondary muted silver text.
-    pub const TEXT_SECONDARY: Color = Color::rgb(148, 163, 184);
-    /// Dimmed tertiary grey text.
-    pub const TEXT_MUTED: Color = Color::rgb(100, 116, 139);
+    /// Primary dark slate text.
+    pub const TEXT_PRIMARY: Color = Color::rgb(15, 23, 42);
+    /// Secondary medium slate text.
+    pub const TEXT_SECONDARY: Color = Color::rgb(71, 85, 105);
+    /// Dimmed tertiary grey text (e.g. rulers).
+    pub const TEXT_MUTED: Color = Color::rgb(148, 163, 184);
 
-    /// High-visibility cyber cyan accent.
-    pub const ACCENT_CYAN: Color = Color::rgb(0, 240, 255);
-    /// Warm alert amber accent.
-    pub const ACCENT_AMBER: Color = Color::rgb(245, 158, 11);
-    /// Critical hazard red accent.
-    pub const ACCENT_RED: Color = Color::rgb(239, 68, 68);
-    /// Health and success green accent.
-    pub const ACCENT_GREEN: Color = Color::rgb(16, 185, 129);
-    /// Tactical purple accent.
-    pub const ACCENT_PURPLE: Color = Color::rgb(168, 85, 247);
+    /// Accent cyan/blue adapted for light backgrounds.
+    pub const ACCENT_CYAN: Color = Color::rgb(2, 132, 199);
+    /// Accent amber adapted for light backgrounds.
+    pub const ACCENT_AMBER: Color = Color::rgb(217, 119, 6);
+    /// Accent hazard red adapted for light backgrounds.
+    pub const ACCENT_RED: Color = Color::rgb(220, 38, 38);
+    /// Accent success green adapted for light backgrounds.
+    pub const ACCENT_GREEN: Color = Color::rgb(22, 163, 74);
+    /// Accent tactical purple adapted for light backgrounds.
+    pub const ACCENT_PURPLE: Color = Color::rgb(147, 51, 234);
 
-    /// High-energy laser tracer magenta.
-    pub const ACCENT_LASER: Color = Color::rgb(255, 42, 109);
+    /// High-energy laser tracer crimson/magenta.
+    pub const ACCENT_LASER: Color = Color::rgb(225, 29, 72);
     /// Muzzle flash starflare yellow.
-    pub const ACCENT_MUZZLE: Color = Color::rgb(255, 230, 80);
+    pub const ACCENT_MUZZLE: Color = Color::rgb(250, 204, 21);
     /// Kinetic impact burst orange.
-    pub const ACCENT_IMPACT: Color = Color::rgb(255, 110, 20);
+    pub const ACCENT_IMPACT: Color = Color::rgb(234, 88, 12);
 
-    /// Returns the color palette for a terrain cell.
+    /// Returns the color palette for a terrain cell in light mode.
     #[must_use]
     pub const fn terrain_palette(terrain: Terrain) -> TerrainPalette {
         match terrain {
             Terrain::Empty => TerrainPalette {
-                fill: Color::rgb(22, 28, 40),
-                stroke: Color::rgb(36, 46, 64),
-                emblem: Color::rgba(148, 163, 184, 300),
+                fill: Color::rgb(248, 250, 252),
+                stroke: Color::rgba(226, 232, 240, 400),
+                emblem: Color::rgba(148, 163, 184, 400),
             },
             Terrain::Wall => TerrainPalette {
-                fill: Color::rgb(45, 55, 72),
-                stroke: Color::rgb(100, 116, 139),
-                emblem: Color::rgb(226, 232, 240),
+                fill: Color::rgb(71, 85, 105),
+                stroke: Color::rgb(51, 65, 85),
+                emblem: Color::rgb(241, 245, 249),
             },
             Terrain::Crate => TerrainPalette {
-                fill: Color::rgb(60, 36, 18),
-                stroke: Color::rgb(146, 84, 18),
-                emblem: Color::rgb(245, 158, 11),
+                fill: Color::rgb(254, 215, 170),
+                stroke: Color::rgb(234, 88, 12),
+                emblem: Color::rgb(154, 52, 18),
             },
             Terrain::Water => TerrainPalette {
-                fill: Color::rgb(12, 74, 110),
-                stroke: Color::rgb(2, 132, 199),
-                emblem: Color::rgb(56, 189, 248),
+                fill: Color::rgb(186, 230, 253),
+                stroke: Color::rgb(56, 189, 248),
+                emblem: Color::rgb(2, 132, 199),
             },
             Terrain::Ice => TerrainPalette {
-                fill: Color::rgb(18, 70, 92),
-                stroke: Color::rgb(56, 189, 248),
-                emblem: Color::rgb(186, 230, 253),
+                fill: Color::rgb(224, 242, 254),
+                stroke: Color::rgb(125, 211, 252),
+                emblem: Color::rgb(14, 165, 233),
             },
             Terrain::Mine => TerrainPalette {
-                fill: Color::rgb(65, 10, 10),
-                stroke: Color::rgb(220, 38, 38),
-                emblem: Color::rgb(248, 113, 113),
+                fill: Color::rgb(254, 202, 202),
+                stroke: Color::rgb(248, 113, 113),
+                emblem: Color::rgb(220, 38, 38),
             },
             Terrain::Medkit => TerrainPalette {
-                fill: Color::rgb(6, 78, 59),
-                stroke: Color::rgb(16, 185, 129),
-                emblem: Color::rgb(110, 231, 183),
+                fill: Color::rgb(167, 243, 208),
+                stroke: Color::rgb(52, 211, 153),
+                emblem: Color::rgb(5, 150, 105),
             },
             Terrain::HighGround => TerrainPalette {
-                fill: Color::rgb(63, 49, 20),
-                stroke: Color::rgb(202, 138, 4),
-                emblem: Color::rgb(250, 204, 21),
+                fill: Color::rgb(254, 240, 138),
+                stroke: Color::rgb(250, 204, 21),
+                emblem: Color::rgb(161, 98, 7),
             },
         }
     }
 
     /// Color assignment for players based on seat index (`PlayerId` 1..6).
+    /// Modern, vibrant, distinct tones with high contrast on white/light grounds.
     #[must_use]
     pub const fn player_color(player_id: PlayerId) -> Color {
         match player_id.0 {
-            1 => Color::rgb(0, 229, 255),  // Neon Cyan
-            2 => Color::rgb(249, 115, 22), // Flame Orange
-            3 => Color::rgb(34, 197, 94),  // Toxic Emerald
-            4 => Color::rgb(168, 85, 247), // Cyber Purple
-            5 => Color::rgb(234, 179, 8),  // Amber Gold
-            _ => Color::rgb(236, 72, 153), // Hot Coral Pink
+            1 => Color::rgb(2, 132, 199),  // Ocean / Sky Blue
+            2 => Color::rgb(234, 88, 12),  // Flame Orange
+            3 => Color::rgb(22, 163, 74),  // Emerald Green
+            4 => Color::rgb(147, 51, 234), // Royal Purple
+            5 => Color::rgb(217, 119, 6),  // Amber Gold
+            _ => Color::rgb(219, 39, 119), // Rose Pink
         }
     }
 
@@ -282,10 +290,10 @@ impl Theme {
     #[must_use]
     pub const fn weather_style(weather: Weather) -> (&'static str, &'static str, Color) {
         match weather {
-            Weather::Clear => ("☀️", "晴朗 (视野开阔)", Color::rgb(250, 204, 21)),
-            Weather::Blizzard => ("❄️", "暴风雪 (水凝成冰/极滑)", Color::rgb(56, 189, 248)),
-            Weather::Heatwave => ("🔥", "酷暑热浪 (薄冰消融)", Color::rgb(249, 115, 22)),
-            Weather::DenseFog => ("🌫️", "浓雾弥漫 (视距受限)", Color::rgb(148, 163, 184)),
+            Weather::Clear => ("☀️", "晴朗 (视野开阔)", Color::rgb(217, 119, 6)),
+            Weather::Blizzard => ("❄️", "暴风雪 (水凝成冰/极滑)", Color::rgb(2, 132, 199)),
+            Weather::Heatwave => ("🔥", "酷暑热浪 (薄冰消融)", Color::rgb(234, 88, 12)),
+            Weather::DenseFog => ("🌫️", "浓雾弥漫 (视距受限)", Color::rgb(100, 116, 139)),
         }
     }
 }

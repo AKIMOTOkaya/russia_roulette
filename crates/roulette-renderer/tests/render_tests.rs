@@ -211,29 +211,27 @@ fn test_render_active_room_svg() {
     let room = mock_active_room();
     let svg = render_match_svg(&room);
 
-    assert!(svg.contains("BETA9"));
-    assert!(svg.contains("雪地绝杀"));
-    assert!(svg.contains("激战中 · ROUND 2"));
-    assert!(svg.contains("暴风雪 (水凝成冰/极滑)"));
-    assert!(svg.contains("连续 3 轮未减员"));
-    // Terrains (procedural gradients and hardness marks)
+    assert!(svg.starts_with("<svg"));
+    assert!(svg.ends_with("</svg>\n"));
+
+    // Multi-layer structure
+    assert!(svg.contains("terrain-layer"));
+    assert!(svg.contains("combat-effects-layer"));
+    assert!(svg.contains("player-layer"));
+
+    // Terrains (procedural gradients and vector glyphs)
     assert!(svg.contains("grad-wall"));
-    assert!(svg.contains("◆◆ H:2"));
     assert!(svg.contains("grad-crate"));
-    assert!(svg.contains("◆ H:1"));
     assert!(svg.contains("grad-water"));
     assert!(svg.contains("grad-ice"));
     assert!(svg.contains("grad-mine"));
     assert!(svg.contains("grad-medkit"));
-    // Players and indicators
+
+    // Players and indicators (pure tokens without messy Chinese badges)
     assert!(svg.contains("P1"));
     assert!(svg.contains("P2"));
-    assert!(svg.contains("👉 行动中"));
-    assert!(svg.contains("充能护盾"));
-    // Elimination record
-    assert!(svg.contains("左轮实弹击毙 (由 P2 击杀)"));
-    // Drama event
-    assert!(svg.contains("【钢片偏转跳弹】"));
+    assert!(svg.contains("Shield Barrier"));
+    assert!(svg.contains("Turn Indicator"));
 }
 
 #[test]
@@ -287,17 +285,17 @@ fn test_render_non_square_board() {
 
     let svg = render_board_svg(&cells, &players, Some(PlayerId(1)), &[], Some(96));
     assert!(svg.starts_with("<svg"));
-    // 7 cols: 7 * 96 + 6 * 8 + 88 = 672 + 48 + 88 = 808
-    // 4 rows: 4 * 96 + 3 * 8 + 88 = 384 + 24 + 88 = 496
+    // 7 cols: 7 * 96 + 6 * 6 + 72 = 672 + 36 + 72 = 780
+    // 4 rows: 4 * 96 + 3 * 6 + 72 = 384 + 18 + 72 = 474
     assert!(
-        svg.contains("width=\"808\""),
-        "Expected width 808 for 7 cols"
+        svg.contains("width=\"780\""),
+        "Expected width 780 for 7 cols"
     );
     assert!(
-        svg.contains("height=\"496\""),
-        "Expected height 496 for 4 rows"
+        svg.contains("height=\"474\""),
+        "Expected height 474 for 4 rows"
     );
-    assert!(svg.contains("viewBox=\"0 0 808 496\""));
+    assert!(svg.contains("viewBox=\"0 0 780 474\""));
     // Verify coordinate rulers: columns A..G, rows 1..4
     assert!(svg.contains(">A<"));
     assert!(svg.contains(">G<"));
@@ -331,7 +329,7 @@ fn test_render_tilesheet_and_standalone_assets() {
     // 2. Standalone single tile
     let wall_svg = render_single_tile_svg(Terrain::Wall, 96);
     assert!(wall_svg.contains("grad-wall"));
-    assert!(wall_svg.contains("◆◆ H:2"));
+    assert!(wall_svg.contains("polygon"));
 
     // 3. Standalone player token
     let player_svg = render_single_player_svg(PlayerId(1), PlayerKind::Human, true, true, 80);
@@ -363,7 +361,9 @@ fn test_render_finished_room_with_winner() {
     room.phase = RoomPhase::Finished;
 
     let svg = render_match_svg(&room);
-    assert!(svg.contains("胜者加冕: PLAYER 1 最终幸存！"));
+    assert!(svg.contains("terrain-layer"));
+    assert!(svg.contains("player-layer"));
+    assert!(svg.contains("P1"));
 
     let png = render_match_png(&room).expect("failed to render finished match PNG");
     assert_eq!(&png[0..8], &PNG_MAGIC);
@@ -390,8 +390,10 @@ fn test_render_game_view() {
     };
 
     let svg = render_game_svg(&game_view, "普通玩家房", "USR01");
-    assert!(svg.contains("普通玩家房"));
-    assert!(svg.contains("USR01"));
+    assert!(svg.contains("terrain-layer"));
+    assert!(svg.contains("player-layer"));
+    assert!(svg.contains("P1"));
+    assert!(svg.contains("P2"));
 
     let png =
         render_game_png(&game_view, "普通玩家房", "USR01").expect("failed to render game view PNG");

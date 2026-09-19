@@ -35,11 +35,11 @@ impl EffectsRenderer {
         // 2. High-energy Laser Tracer
         // Outer glowing halo
         svg.push_str(&format!(
-            "    <line x1=\"{from_cx}\" y1=\"{from_cy}\" x2=\"{to_cx}\" y2=\"{to_cy}\" stroke=\"#ff2a6d\" stroke-width=\"4.5\" opacity=\"0.85\" stroke-linecap=\"round\" filter=\"url(#fx-glow-laser)\" />\n"
+            "    <line x1=\"{from_cx}\" y1=\"{from_cy}\" x2=\"{to_cx}\" y2=\"{to_cy}\" stroke=\"#e11d48\" stroke-width=\"3.5\" opacity=\"0.9\" stroke-linecap=\"round\" filter=\"url(#fx-glow-laser)\" />\n"
         ));
-        // Inner intense white-hot beam core
+        // Inner intense white beam core
         svg.push_str(&format!(
-            "    <line x1=\"{from_cx}\" y1=\"{from_cy}\" x2=\"{to_cx}\" y2=\"{to_cy}\" stroke=\"#fffb96\" stroke-width=\"1.8\" stroke-linecap=\"round\" />\n"
+            "    <line x1=\"{from_cx}\" y1=\"{from_cy}\" x2=\"{to_cx}\" y2=\"{to_cy}\" stroke=\"#ffffff\" stroke-width=\"1.2\" stroke-linecap=\"round\" />\n"
         ));
 
         // 3. Impact Flash & Spark Burst at destination
@@ -206,64 +206,73 @@ impl EffectsRenderer {
             return (tx, ty, is_hit, is_lethal);
         }
 
-        // Fallback: estimate ray end along direction
+        // Fallback: estimate ray end along direction (stay inside board ground plate)
         let (tx, ty) = match dir {
             Direction::Up => {
                 let (cx, _) = metrics.cell_center(start_pos);
-                (cx, metrics.padding / 2)
+                (cx, metrics.padding + 6)
             }
             Direction::Down => {
                 let (cx, _) = metrics.cell_center(start_pos);
-                (cx, metrics.total_height() - metrics.padding / 2)
+                (cx, metrics.total_height() - metrics.padding - 6)
             }
             Direction::Left => {
                 let (_, cy) = metrics.cell_center(start_pos);
-                (metrics.padding / 2, cy)
+                (metrics.padding + 6, cy)
             }
             Direction::Right => {
                 let (_, cy) = metrics.cell_center(start_pos);
-                (metrics.total_width() - metrics.padding / 2, cy)
+                (metrics.total_width() - metrics.padding - 6, cy)
             }
         };
 
         (tx, ty, is_hit, is_lethal)
     }
 
-    fn find_event_target_pos(target_id: PlayerId, _events: &[&GameEvent]) -> Option<Position> {
-        // Can be refined with player state lookup or event details
+    fn find_event_target_pos(target_id: PlayerId, events: &[&GameEvent]) -> Option<Position> {
+        for ev in events {
+            match ev {
+                GameEvent::DramaticEvent {
+                    position: Some(pos),
+                    ..
+                } => return Some(*pos),
+                GameEvent::TerrainChanged { position, .. } => return Some(*position),
+                _ => {}
+            }
+        }
         let _ = target_id;
         None
     }
 
     fn render_muzzle_flash(svg: &mut String, cx: u32, cy: u32) {
-        let arm = 9;
+        let arm = 8;
         svg.push_str(&format!(
-            "    <!-- Muzzle Flash -->\n    <polygon points=\"{cx},{} {},{cy} {cx},{} {},{cy}\" fill=\"#fffb96\" filter=\"url(#fx-glow-amber)\" />\n",
+            "    <!-- Muzzle Flash -->\n    <polygon points=\"{cx},{} {},{cy} {cx},{} {},{cy}\" fill=\"#f59e0b\" filter=\"url(#fx-glow-amber)\" />\n",
             cy.saturating_sub(arm), cx + arm, cy + arm, cx.saturating_sub(arm)
         ));
         svg.push_str(&format!(
-            "    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"3\" fill=\"#ffffff\" />\n"
+            "    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"2.5\" fill=\"#ffffff\" />\n"
         ));
     }
 
     fn render_impact_burst(svg: &mut String, cx: u32, cy: u32, is_hit: bool, is_lethal: bool) {
         if is_hit {
-            let shock_color = if is_lethal { "#ef4444" } else { "#ff6e14" };
+            let shock_color = if is_lethal { "#e11d48" } else { "#ea580c" };
             svg.push_str(&format!(
-                "    <!-- Impact Burst Shockwave -->\n    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"14\" fill=\"none\" stroke=\"{shock_color}\" stroke-width=\"2.5\" stroke-dasharray=\"4 2\" filter=\"url(#fx-glow-laser)\" />\n"
+                "    <!-- Impact Burst Shockwave -->\n    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"12\" fill=\"none\" stroke=\"{shock_color}\" stroke-width=\"2\" stroke-dasharray=\"4 2\" filter=\"url(#fx-glow-laser)\" />\n"
             ));
             // Radiating sparks
-            let spark_len = 8;
+            let spark_len = 6;
             svg.push_str(&format!(
-                "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ffe650\" stroke-width=\"1.5\" stroke-linecap=\"round\" />\n",
+                "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#f59e0b\" stroke-width=\"1.5\" stroke-linecap=\"round\" />\n",
                 cx - spark_len, cy - spark_len, cx + spark_len, cy + spark_len
             ));
             svg.push_str(&format!(
-                "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#ffe650\" stroke-width=\"1.5\" stroke-linecap=\"round\" />\n",
+                "    <line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"#f59e0b\" stroke-width=\"1.5\" stroke-linecap=\"round\" />\n",
                 cx + spark_len, cy - spark_len, cx - spark_len, cy + spark_len
             ));
             svg.push_str(&format!(
-                "    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"4\" fill=\"#ffffff\" />\n"
+                "    <circle cx=\"{cx}\" cy=\"{cy}\" r=\"3\" fill=\"#ffffff\" />\n"
             ));
         } else {
             // Dissipation miss ripples

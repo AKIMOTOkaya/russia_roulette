@@ -82,24 +82,26 @@ flowchart TD
   - 位于表现/输出层（Presentation/Output Layer），独立为 `crates/roulette-renderer`。
   - **严格非 LLM 生成**：完全按照权威规则、地形属性与席位状态进行确定性几何与纯矢量推演，杜绝大模型幻觉与延迟，生成毫秒级响应。
   - **单向只读投影**：输入仅为 `roulette-domain` 的只读快照（`RefereeRoomView`、`GameView`、`TerrainProperties`、`Weather` 等），绝不修改游戏状态或反向引入网络/存储依赖。
-- **纯程序化矢量素材库 (`assets/`) 与零 Emoji 依赖**：
-  - **地形材质渲染器 (`TerrainAssetRenderer`)**：为空地、掩体墙体（`◆◆ H:2`）、木箱（`◆ H:1`）、深水、冰面、暗雷、护盾舱、高地提供纯几何线条、光影与色阶渲染，彻底替代第三方 Emoji 字符。
-  - **战术玩家棋子 (`PlayerAssetRenderer`)**：支持席位色环（P1-P6）、真人目镜与 Bot 芯片光学探头差异化刻画、激活回合高亮金轨、护盾蜂窝力场罩与阵亡骷髅十字。
-  - **动态弹道与位移特效 (`EffectsRenderer`)**：高能激光光束（`fx-glow-laser`）、枪口星芒火星、受击致死爆点 shockwave、以及战术位移虚线箭簇。
-  - **统一素材图谱生成器 (`TileSheetRenderer`)**：一键生成全套地形、棋子、特效与天气的矢量图谱，供视觉检视与资源接入。
+  - **消息与纯地图解耦**：彻底摒弃杂糅的 1080x720 HUD 卡片、大标题、右侧血条卡片与底部文本流水；文本战报由机器人消息气泡单独播报，渲染引擎专注于输出自适应纯净战场地图。
+- **简约白色系多图层渲染架构 (`BoardRenderer` / `assets/`)**：
+  - **连贯大地底板层 (Layer 0)**：彻底消除生硬的“一块一块”独立瓦片格子边框，平原采用通透连贯的浅色底板（仅以微小极浅圆点标记格心），视觉整体感强烈。
+  - **淡雅外围标尺层 (Layer 1)**：外围采用淡雅 `#94a3b8` 细字体标注 A-E、1-5 坐标，外围留白舒展自然。
+  - **环境与地形底色层 (Layer 2)**：所有特殊地形（深水、冰面、掩体墙、木箱、地雷、补给、高地）采用柔和淡雅大圆角底色块（无任何中文字符与硬度标记），配以极简程序化几何纹理。
+  - **战术弹道与特效层 (Layer 3)**：白底高对比绯红激光束（`#e11d48` 外晕 + 纯白激光芯）、受击微爆残影与位移虚线。
+  - **作战棋子层 (Layer 4)**：无字扁平高质感圆盾 + 纯白英文席位标号（`P1`/`P2`），真人配以微型光点、Bot 附微型凹槽；当前行动者冠以柔和金光光环与小三角形指针；阵亡玩家呈现极简细红斜叉残影。
 - **动态自适应画幅与非方形网格支持 (`BoardMetrics`)**：
   - 单元格严格维持正方形，但棋盘支持任意行列跨度（$Cols \times Rows$），杜绝固定方形尺寸假设。
-  - 画布尺寸依据 `BoardMetrics::from_cells` 动态严密贴合，支持纯地图独立模式（`render_board_svg` / `render_board_png`）与全 HUD 卡片模式。
+  - 画布尺寸依据 `BoardMetrics::from_cells` 动态严密贴合（5x5 棋盘紧凑贴合为 496x496），消除一切无效多余黑边。
 - **双通道输出支持**：
-  1. **SVG 矢量流水线 (`SvgComposer` / `BoardRenderer`)**：毫秒级矢量字符串生成，具备 100% 规则保真度、无损缩放和深色战术 HUD 质感；
-  2. **PNG 光栅化流水线 (`render_png_from_svg`)**：基于 `resvg` 与 `tiny-skia` 将矢量卡片栅格化为高质量抗锯齿 PNG 二进制字节流，为 QQ 群聊、聊天机器人与外部 IM 提供开箱即用的富媒体卡片。
+  1. **SVG 矢量流水线 (`SvgComposer` / `BoardRenderer`)**：毫秒级矢量字符串生成，具备 100% 规则保真度、无损缩放和通透现代设计美学；
+  2. **PNG 光栅化流水线 (`render_png_from_svg`)**：基于 `resvg` 与 `tiny-skia` 将矢量地图栅格化为高质量抗锯齿 PNG 二进制字节流，与 QQ 机器人的文本气泡完美配合。
 - **接口集成**：
   - **HTTP 路由**：
-    - `GET /api/rooms/{room_id}/image?format=png|svg&view_mode=full|board`；
-    - `GET /api/rooms/{room_id}/board?format=png|svg&cell_size=96`（独立自适应战术大地图）；
+    - `GET /api/rooms/{room_id}/image?format=png|svg&cell_size=80`（纯战场地图图片输出）；
+    - `GET /api/rooms/{room_id}/board?format=png|svg&cell_size=80`（独立自适应战术大地图）；
     - `GET /api/assets/tilesheet?format=png|svg`（全素材图谱总览）。
   - **MCP 工具**：
-    - `referee_render_room_image`（支持 `view_mode="full"|"board"`、`cell_size` 与 `format`）；
+    - `referee_render_room_image`（支持 `cell_size` 与 `format` 导出纯地图）；
     - `referee_render_asset_sheet`（纯矢量素材图谱总览导出）。
 
 ### MCP 接口层与裁判/主持人角色模型 (Referee Role Model)

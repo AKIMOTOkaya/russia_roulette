@@ -19,65 +19,68 @@ pub use tilesheet::TileSheetRenderer;
 #[must_use]
 pub fn render_shared_defs() -> &'static str {
     r##"  <defs>
-    <!-- Glow and shadow filters -->
+    <!-- Glow and shadow filters for minimalist light theme -->
     <filter id="fx-glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feGaussianBlur stdDeviation="2.5" result="blur" />
       <feMerge>
         <feMergeNode in="blur" />
         <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
     <filter id="fx-glow-amber" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feGaussianBlur stdDeviation="2.5" result="blur" />
       <feMerge>
         <feMergeNode in="blur" />
         <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
     <filter id="fx-glow-laser" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feGaussianBlur stdDeviation="3" result="blur" />
       <feMerge>
         <feMergeNode in="blur" />
         <feMergeNode in="SourceGraphic" />
       </feMerge>
     </filter>
     <filter id="fx-drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6" />
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10" />
+    </filter>
+    <filter id="fx-token-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.16" />
     </filter>
 
-    <!-- Gradients -->
+    <!-- Light Minimalist Gradients -->
     <linearGradient id="grad-wall" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#475569" />
-      <stop offset="100%" stop-color="#1e293b" />
+      <stop offset="0%" stop-color="#64748b" />
+      <stop offset="100%" stop-color="#475569" />
     </linearGradient>
     <linearGradient id="grad-crate" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#78350f" />
-      <stop offset="100%" stop-color="#2d1506" />
+      <stop offset="0%" stop-color="#fed7aa" />
+      <stop offset="100%" stop-color="#fdba74" />
     </linearGradient>
     <linearGradient id="grad-water" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#0369a1" />
-      <stop offset="100%" stop-color="#082f49" />
+      <stop offset="0%" stop-color="#e0f2fe" />
+      <stop offset="100%" stop-color="#bae6fd" />
     </linearGradient>
     <linearGradient id="grad-ice" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.9" />
-      <stop offset="100%" stop-color="#0c4a6e" stop-opacity="0.95" />
+      <stop offset="0%" stop-color="#f0f9ff" />
+      <stop offset="100%" stop-color="#e0f2fe" />
     </linearGradient>
     <linearGradient id="grad-mine" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7f1d1d" />
-      <stop offset="100%" stop-color="#250404" />
+      <stop offset="0%" stop-color="#fee2e2" />
+      <stop offset="100%" stop-color="#fecaca" />
     </linearGradient>
     <linearGradient id="grad-medkit" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#059669" />
-      <stop offset="100%" stop-color="#022c22" />
+      <stop offset="0%" stop-color="#d1fae5" />
+      <stop offset="100%" stop-color="#a7f3d0" />
     </linearGradient>
     <linearGradient id="grad-highground" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#854d0e" />
-      <stop offset="100%" stop-color="#2c1a04" />
+      <stop offset="0%" stop-color="#fef9c3" />
+      <stop offset="100%" stop-color="#fef08a" />
     </linearGradient>
     <linearGradient id="grad-laser" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#ff2a6d" />
-      <stop offset="50%" stop-color="#fffb96" />
-      <stop offset="100%" stop-color="#ff2a6d" />
+      <stop offset="0%" stop-color="#e11d48" />
+      <stop offset="50%" stop-color="#ffe4e6" />
+      <stop offset="100%" stop-color="#e11d48" />
     </linearGradient>
   </defs>
 "##
