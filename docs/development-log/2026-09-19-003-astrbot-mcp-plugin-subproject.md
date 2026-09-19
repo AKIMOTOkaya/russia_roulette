@@ -73,3 +73,9 @@
    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`：0 warnings；
    - `cargo test --workspace`：36 个测试全部通过；
    - `node --check clients/web/app.js`：前端语法校验通过。
+
+## 上架审核优化与架构说明（后续迭代）
+
+1. **审核合规去敏**：全面排查并清除 `metadata.yaml`、`README.md`、`_conf_schema.json`、`main.py`、`renderer.py` 及测试中的敏感字眼（“赌”、“赌博”、“博弈”），重构为“俄罗斯轮盘策略对战游戏”；
+2. **双模 MCP 连接声明**：在文档与元数据中明确支持两种部署模式——既支持直接连接云端/公网 MCP 轮盘游戏服务器，也支持本地模式并在后续版本支持插件内一键自主拉起轻量 MCP 游戏引擎；
+3. **子仓库提交**：完成修改后在子项目仓库提交 `03e04e6`。
