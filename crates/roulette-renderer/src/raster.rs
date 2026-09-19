@@ -26,6 +26,32 @@ fn get_font_database() -> Arc<resvg::usvg::fontdb::Database> {
         .get_or_init(|| {
             let mut db = resvg::usvg::fontdb::Database::new();
             db.load_system_fonts();
+
+            for dir in &[
+                "/app/runtime/fonts",
+                "/app/fonts",
+                "fonts",
+                "/usr/share/fonts",
+                "/usr/local/share/fonts",
+                "/Library/Fonts",
+                "/System/Library/Fonts",
+            ] {
+                let p = std::path::Path::new(dir);
+                if p.is_dir() {
+                    db.load_fonts_dir(p);
+                }
+            }
+
+            if let Ok(extra) = std::env::var("ROULETTE_FONTS_DIR") {
+                let p = std::path::Path::new(&extra);
+                if p.is_dir() {
+                    db.load_fonts_dir(p);
+                }
+            }
+
+            db.set_sans_serif_family("MiSans");
+            db.set_serif_family("MiSans");
+            db.set_monospace_family("DejaVu Sans Mono");
             Arc::new(db)
         })
         .clone()

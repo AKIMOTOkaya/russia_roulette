@@ -155,7 +155,7 @@ impl SvgComposer {
         ));
         svg.push_str("  <defs>\n");
         svg.push_str("    <style>\n");
-        svg.push_str("      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif; }\n");
+        svg.push_str("      text { font-family: 'MiSans', 'Noto Sans CJK SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', 'DejaVu Sans', sans-serif; }\n");
         svg.push_str("    </style>\n");
         svg.push_str("  </defs>\n");
         svg.push_str(crate::assets::render_shared_defs());

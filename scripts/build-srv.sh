@@ -29,13 +29,21 @@ TMP_BIN="/tmp/roulette-server-linux-amd64"
 rm -f "${TMP_BIN}"
 
 if [[ "${BUILD_MODE}" == "local_docker" ]]; then
-  echo ">>> [1/3] 检测到本地 Docker 正在运行，使用本地容器构建..."
+  echo ">>> [1/3] 检测到本地 Docker 正在运行，使用本地容器构建 (linux/amd64)..."
+  CARGO_REGISTRY_ARG=""
+  if [[ -d "${HOME}/.cargo/registry" ]]; then
+    CARGO_REGISTRY_ARG="-v ${HOME}/.cargo/registry:/usr/local/cargo/registry -v ${HOME}/.cargo/git:/usr/local/cargo/git"
+  fi
   docker run --rm \
+    --platform linux/amd64 \
+    -e RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
+    ${CARGO_REGISTRY_ARG} \
     -v "${PROJECT_ROOT}:/usr/src/app" \
+    -e CARGO_TARGET_DIR=/usr/src/app/target/linux-amd64 \
     -w /usr/src/app \
     rust:bookworm \
     cargo build --release --bin roulette-server
-  cp "${PROJECT_ROOT}/target/release/roulette-server" "${TMP_BIN}"
+  cp "${PROJECT_ROOT}/target/linux-amd64/release/roulette-server" "${TMP_BIN}"
 else
   echo ">>> [1/3] 本地未运行 Docker，通过专用编译通道构建 Linux x86_64 生产镜像..."
   REMOTE_TMP="/tmp/roulette-build-$(date +%s)"
