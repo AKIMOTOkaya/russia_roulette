@@ -79,3 +79,16 @@
 1. **审核合规去敏**：全面排查并清除 `metadata.yaml`、`README.md`、`_conf_schema.json`、`main.py`、`renderer.py` 及测试中的敏感字眼（“赌”、“赌博”、“博弈”），重构为“俄罗斯轮盘策略对战游戏”；
 2. **双模 MCP 连接声明**：在文档与元数据中明确支持两种部署模式——既支持直接连接云端/公网 MCP 轮盘游戏服务器，也支持本地模式并在后续版本支持插件内一键自主拉起轻量 MCP 游戏引擎；
 3. **子仓库提交**：完成修改后在子项目仓库提交 `03e04e6`。
+
+## 服务器临时快速安装支持
+
+为了解决商城审核期间无法在线安装的问题，提供了自动化临时安装脚本：
+1. **脚本实现 (`scripts/install-astrbot-plugin-to-server.sh`)**：
+   - 自动运行本地单体测试验证质量；
+   - 检查远程服务器 SSH 与 `miniaki-qqbot-astrbot-1` 容器在线状态；
+   - 将本地插件排除临时与私密文件后打包并直接管道解压至容器 `/AstrBot/data/plugins/astrbot_plugin_russian_roulette`；
+   - 自动配置 `/AstrBot/data/config/astrbot_plugin_russian_roulette_config.json`，指向容器网络内部的轮盘后端服务 `http://roulette-backend:8080`；
+   - 支持 `--restart` 选项快速重启容器加载新插件。
+2. **实机部署验证**：
+   - 运行 `./scripts/install-astrbot-plugin-to-server.sh --restart`；
+   - 检查容器日志显示：`Plugin astrbot_plugin_russian_roulette (1.0.0) by Akimoto Kaya: # 俄罗斯轮盘 (Russian Roulette) - AstrBot 游戏插件` 顺利加载，且 `RussianRoulettePlugin initialized with backend: http://roulette-backend:8080` 初始化成功。
