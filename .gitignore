@@ -34,3 +34,6 @@ deploy/**/runtime/*
 !deploy/**/runtime/build-info.md
 # Subprojects managed as independent repositories for marketplace publishing
 /clients/astrbot_plugin_russian_roulette/
+
+# Temporary testing environments (NapCat QQ, bot sessions, credentials)
+/tests/temp_napcat/
