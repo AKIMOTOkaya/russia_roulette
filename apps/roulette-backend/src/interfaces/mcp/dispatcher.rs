@@ -201,10 +201,57 @@ impl McpDispatcher {
                     .get("format")
                     .and_then(Value::as_str)
                     .map(str::to_lowercase);
+                let view_mode: Option<String> = arguments
+                    .get("view_mode")
+                    .and_then(Value::as_str)
+                    .map(str::to_lowercase);
+                let cell_size: Option<u32> = arguments
+                    .get("cell_size")
+                    .and_then(Value::as_u64)
+                    .and_then(|v| u32::try_from(v).ok());
                 let room = self
                     .service
                     .referee_inspect_room(&room_id)
                     .map_err(|e| McpError::execution_failed(e.to_string()))?;
+
+                let is_board_only = view_mode.as_deref() == Some("board");
+                if let Some(game) = room.game.as_ref().filter(|_| is_board_only) {
+                    if format_str.as_deref() == Some("svg") {
+                        let svg = roulette_renderer::render_board_svg(
+                            &game.cells,
+                            &game.players,
+                            game.current_player_id,
+                            &game.records,
+                            cell_size,
+                        );
+                        return Ok(serde_json::json!({
+                            "room_id": room_id,
+                            "view_mode": "board",
+                            "format": "svg",
+                            "content_type": "image/svg+xml",
+                            "svg": svg,
+                        }));
+                    }
+                    let png_bytes = roulette_renderer::render_board_png(
+                        &game.cells,
+                        &game.players,
+                        game.current_player_id,
+                        &game.records,
+                        cell_size,
+                    )
+                    .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                    let base64_encoded = base64_encode(&png_bytes);
+                    let data_uri = format!("data:image/png;base64,{base64_encoded}");
+                    return Ok(serde_json::json!({
+                        "room_id": room_id,
+                        "view_mode": "board",
+                        "format": "png",
+                        "content_type": "image/png",
+                        "size_bytes": png_bytes.len(),
+                        "base64": base64_encoded,
+                        "data_uri": data_uri,
+                    }));
+                }
 
                 if format_str.as_deref() == Some("svg") {
                     let svg = roulette_renderer::render_match_svg(&room);
@@ -221,6 +268,33 @@ impl McpDispatcher {
                     let data_uri = format!("data:image/png;base64,{base64_encoded}");
                     Ok(serde_json::json!({
                         "room_id": room_id,
+                        "format": "png",
+                        "content_type": "image/png",
+                        "size_bytes": png_bytes.len(),
+                        "base64": base64_encoded,
+                        "data_uri": data_uri,
+                    }))
+                }
+            }
+            "referee_render_asset_sheet" => {
+                let format_str: Option<String> = arguments
+                    .get("format")
+                    .and_then(Value::as_str)
+                    .map(str::to_lowercase);
+
+                if format_str.as_deref() == Some("svg") {
+                    let svg = roulette_renderer::render_tilesheet_svg();
+                    Ok(serde_json::json!({
+                        "format": "svg",
+                        "content_type": "image/svg+xml",
+                        "svg": svg,
+                    }))
+                } else {
+                    let png_bytes = roulette_renderer::render_tilesheet_png()
+                        .map_err(|e| McpError::execution_failed(e.to_string()))?;
+                    let base64_encoded = base64_encode(&png_bytes);
+                    let data_uri = format!("data:image/png;base64,{base64_encoded}");
+                    Ok(serde_json::json!({
                         "format": "png",
                         "content_type": "image/png",
                         "size_bytes": png_bytes.len(),

@@ -531,6 +531,54 @@ mod tests {
         );
         assert!(render_png["size_bytes"].as_u64().unwrap() > 1024);
 
+        // 8b. referee_render_room_image (standalone board view)
+        let render_board_svg = dispatcher
+            .dispatch(
+                "referee_render_room_image",
+                &json!({
+                    "room_id": room_id,
+                    "format": "svg",
+                    "view_mode": "board"
+                }),
+            )
+            .expect("referee render room board svg");
+        assert_eq!(render_board_svg["view_mode"], "board");
+        assert!(
+            render_board_svg["svg"]
+                .as_str()
+                .unwrap()
+                .contains("terrain-layer")
+        );
+
+        let render_board_png = dispatcher
+            .dispatch(
+                "referee_render_room_image",
+                &json!({
+                    "room_id": room_id,
+                    "format": "png",
+                    "view_mode": "board"
+                }),
+            )
+            .expect("referee render room board png");
+        assert_eq!(render_board_png["view_mode"], "board");
+        assert!(render_board_png["size_bytes"].as_u64().unwrap() > 1024);
+
+        // 8c. referee_render_asset_sheet
+        let sheet_svg = dispatcher
+            .dispatch("referee_render_asset_sheet", &json!({ "format": "svg" }))
+            .expect("referee render asset sheet svg");
+        assert!(
+            sheet_svg["svg"]
+                .as_str()
+                .unwrap()
+                .contains("PROCEDURAL VECTOR ASSET CATALOG")
+        );
+
+        let sheet_png = dispatcher
+            .dispatch("referee_render_asset_sheet", &json!({ "format": "png" }))
+            .expect("referee render asset sheet png");
+        assert!(sheet_png["size_bytes"].as_u64().unwrap() > 5000);
+
         // 9. referee_list_rooms
         let list_res = dispatcher
             .dispatch("referee_list_rooms", &json!({}))

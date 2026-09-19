@@ -216,13 +216,15 @@ fn test_render_active_room_svg() {
     assert!(svg.contains("激战中 · ROUND 2"));
     assert!(svg.contains("暴风雪 (水凝成冰/极滑)"));
     assert!(svg.contains("连续 3 轮未减员"));
-    // Terrains
-    assert!(svg.contains("🧱 2H"));
-    assert!(svg.contains("📦 1H"));
-    assert!(svg.contains("🌊 水域"));
-    assert!(svg.contains("🧊 冰面"));
-    assert!(svg.contains("💣 暗雷"));
-    assert!(svg.contains("🛡️ 护盾"));
+    // Terrains (procedural gradients and hardness marks)
+    assert!(svg.contains("grad-wall"));
+    assert!(svg.contains("◆◆ H:2"));
+    assert!(svg.contains("grad-crate"));
+    assert!(svg.contains("◆ H:1"));
+    assert!(svg.contains("grad-water"));
+    assert!(svg.contains("grad-ice"));
+    assert!(svg.contains("grad-mine"));
+    assert!(svg.contains("grad-medkit"));
     // Players and indicators
     assert!(svg.contains("P1"));
     assert!(svg.contains("P2"));
@@ -232,6 +234,110 @@ fn test_render_active_room_svg() {
     assert!(svg.contains("左轮实弹击毙 (由 P2 击杀)"));
     // Drama event
     assert!(svg.contains("【钢片偏转跳弹】"));
+}
+
+#[test]
+fn test_render_non_square_board() {
+    use roulette_domain::{
+        CellView, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position, Terrain,
+    };
+    use roulette_renderer::{render_board_png, render_board_svg};
+
+    // 7 columns x 4 rows non-square map
+    let mut cells = Vec::new();
+    for y in 0..4 {
+        for x in 0..7 {
+            let terrain = match (x, y) {
+                (1, 1) => Terrain::Wall,
+                (2, 1) => Terrain::Crate,
+                (3, 2) => Terrain::Water,
+                (4, 2) => Terrain::Ice,
+                (5, 3) => Terrain::HighGround,
+                _ => Terrain::Empty,
+            };
+            cells.push(CellView {
+                position: Position { x, y },
+                terrain,
+                player_id: None,
+            });
+        }
+    }
+
+    let p1 = PlayerState {
+        id: PlayerId(1),
+        name: "Sniper P1".to_string(),
+        kind: PlayerKind::Human,
+        status: PlayerStatus::Alive,
+        position: Some(Position { x: 0, y: 0 }),
+        has_shield: true,
+        water_turns: 0,
+        consecutive_shots: 0,
+    };
+    let p2 = PlayerState {
+        id: PlayerId(2),
+        name: "Bot P2".to_string(),
+        kind: PlayerKind::Bot,
+        status: PlayerStatus::Alive,
+        position: Some(Position { x: 6, y: 3 }),
+        has_shield: false,
+        water_turns: 0,
+        consecutive_shots: 0,
+    };
+    let players = vec![p1, p2];
+
+    let svg = render_board_svg(&cells, &players, Some(PlayerId(1)), &[], Some(96));
+    assert!(svg.starts_with("<svg"));
+    // 7 cols: 7 * 96 + 6 * 8 + 88 = 672 + 48 + 88 = 808
+    // 4 rows: 4 * 96 + 3 * 8 + 88 = 384 + 24 + 88 = 496
+    assert!(
+        svg.contains("width=\"808\""),
+        "Expected width 808 for 7 cols"
+    );
+    assert!(
+        svg.contains("height=\"496\""),
+        "Expected height 496 for 4 rows"
+    );
+    assert!(svg.contains("viewBox=\"0 0 808 496\""));
+    // Verify coordinate rulers: columns A..G, rows 1..4
+    assert!(svg.contains(">A<"));
+    assert!(svg.contains(">G<"));
+    assert!(svg.contains(">4<"));
+
+    let png = render_board_png(&cells, &players, Some(PlayerId(1)), &[], Some(96))
+        .expect("failed to render non-square board PNG");
+    assert_eq!(&png[0..8], &PNG_MAGIC);
+    assert!(png.len() > 5000);
+}
+
+#[test]
+fn test_render_tilesheet_and_standalone_assets() {
+    use roulette_domain::{PlayerId, PlayerKind, Terrain};
+    use roulette_renderer::{
+        render_single_player_svg, render_single_tile_svg, render_tilesheet_png,
+        render_tilesheet_svg,
+    };
+
+    // 1. Asset tilesheet catalog
+    let sheet_svg = render_tilesheet_svg();
+    assert!(sheet_svg.contains("RUSSIAN ROULETTE // PROCEDURAL VECTOR ASSET CATALOG"));
+    assert!(sheet_svg.contains("TERRAIN TILES"));
+    assert!(sheet_svg.contains("COMBATANT TOKENS"));
+    assert!(sheet_svg.contains("BALLISTIC LASER"));
+
+    let sheet_png = render_tilesheet_png().expect("failed to render tilesheet PNG");
+    assert_eq!(&sheet_png[0..8], &PNG_MAGIC);
+    assert!(sheet_png.len() > 10_000);
+
+    // 2. Standalone single tile
+    let wall_svg = render_single_tile_svg(Terrain::Wall, 96);
+    assert!(wall_svg.contains("grad-wall"));
+    assert!(wall_svg.contains("◆◆ H:2"));
+
+    // 3. Standalone player token
+    let player_svg = render_single_player_svg(PlayerId(1), PlayerKind::Human, true, true, 80);
+    assert!(player_svg.contains("Shield Barrier"));
+    assert!(player_svg.contains("Turn Indicator"));
+    assert!(player_svg.contains("P1"));
 }
 
 #[test]

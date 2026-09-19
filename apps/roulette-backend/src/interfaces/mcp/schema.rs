@@ -113,6 +113,17 @@ pub struct RefereeRenderRoomImageParams {
     pub room_id: String,
     /// Output format: "png" (default base64 data URI) or "svg" (raw SVG XML).
     pub format: Option<String>,
+    /// View mode: "full" (default complete HUD card) or "board" (standalone dynamic board).
+    pub view_mode: Option<String>,
+    /// Optional cell size in pixels for standalone board (default 96).
+    pub cell_size: Option<u32>,
+}
+
+/// Parameters for `referee_render_asset_sheet`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct RefereeRenderAssetSheetParams {
+    /// Output format: "png" (default base64 data URI) or "svg" (raw SVG XML).
+    pub format: Option<String>,
 }
 
 /// Parameters for `create_game_room`.
@@ -187,6 +198,7 @@ pub struct GetTerrainPropertiesParams {}
 
 /// Returns the standard catalog of Russian Roulette Referee MCP tool specifications.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn standard_tool_definitions() -> Vec<McpToolDefinition> {
     vec![
         McpToolDefinition {
@@ -248,6 +260,12 @@ pub fn standard_tool_definitions() -> Vec<McpToolDefinition> {
             name: "referee_render_room_image".to_string(),
             description: "裁判将当前房间与战术棋盘按规则渲染合成精美HUD卡片图片（PNG base64或SVG格式），便于在QQ等IM会话中直观输出战况".to_string(),
             input_schema: to_value(schemars::schema_for!(RefereeRenderRoomImageParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "referee_render_asset_sheet".to_string(),
+            description: "渲染纯矢量战术素材图谱总览（地形、玩家席位、弹道激光特效、天气徽记）".to_string(),
+            input_schema: to_value(schemars::schema_for!(RefereeRenderAssetSheetParams))
                 .unwrap_or_default(),
         },
         McpToolDefinition {

@@ -46,6 +46,11 @@ pub fn build_router(service: Arc<GameService>) -> Router {
             "/api/rooms/{room_id}/image",
             get(handlers::render_room_image),
         )
+        .route(
+            "/api/rooms/{room_id}/board",
+            get(handlers::render_room_board),
+        )
+        .route("/api/assets/tilesheet", get(handlers::render_tilesheet))
         .route("/api/rooms/{room_id}/leave", post(handlers::leave_room))
         .route("/api/rooms/{room_id}/bots/add", post(handlers::add_bot))
         .route(

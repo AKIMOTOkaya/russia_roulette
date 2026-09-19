@@ -362,6 +362,7 @@ pub async fn mcp_call(
 }
 
 /// Renders an authoritative tactical HUD card image for a room in PNG or SVG format.
+/// Renders an authoritative tactical HUD card image or standalone board for a room.
 ///
 /// # Errors
 ///
@@ -376,6 +377,34 @@ pub async fn render_room_image(
         .map_err(|e| ApiError::from_service(&e))?;
 
     let format_str = query.format.as_deref().unwrap_or("png").to_lowercase();
+    let is_board_only = query.view_mode.as_deref() == Some("board");
+
+    if let Some(game) = room.game.as_ref().filter(|_| is_board_only) {
+        if format_str == "svg" {
+            let svg = roulette_renderer::render_board_svg(
+                &game.cells,
+                &game.players,
+                game.current_player_id,
+                &game.records,
+                query.cell_size,
+            );
+            return Ok((
+                [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
+                svg,
+            )
+                .into_response());
+        }
+        let png = roulette_renderer::render_board_png(
+            &game.cells,
+            &game.players,
+            game.current_player_id,
+            &game.records,
+            query.cell_size,
+        )
+        .map_err(|e| ApiError::internal(format!("render board png failed: {e}")))?;
+        return Ok(([(header::CONTENT_TYPE, "image/png")], png).into_response());
+    }
+
     if format_str == "svg" {
         let svg = roulette_renderer::render_match_svg(&room);
         Ok((
@@ -386,6 +415,42 @@ pub async fn render_room_image(
     } else {
         let png = roulette_renderer::render_match_png(&room)
             .map_err(|e| ApiError::internal(format!("render png failed: {e}")))?;
+        Ok(([(header::CONTENT_TYPE, "image/png")], png).into_response())
+    }
+}
+
+/// Renders a standalone dynamic tactical board without HUD card frames or roster panels.
+///
+/// # Errors
+///
+/// Returns `ApiError` if room is not found or rasterization fails.
+pub async fn render_room_board(
+    State(service): State<Arc<GameService>>,
+    Path(room_id): Path<String>,
+    Query(query): Query<RoomImageQuery>,
+) -> Result<Response, ApiError> {
+    let mut modified_query = query;
+    modified_query.view_mode = Some("board".to_string());
+    render_room_image(State(service), Path(room_id), Query(modified_query)).await
+}
+
+/// Renders the complete procedural vector asset catalog / tilesheet.
+///
+/// # Errors
+///
+/// Returns `ApiError` if rasterization fails.
+pub async fn render_tilesheet(Query(query): Query<RoomImageQuery>) -> Result<Response, ApiError> {
+    let format_str = query.format.as_deref().unwrap_or("png").to_lowercase();
+    if format_str == "svg" {
+        let svg = roulette_renderer::render_tilesheet_svg();
+        Ok((
+            [(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8")],
+            svg,
+        )
+            .into_response())
+    } else {
+        let png = roulette_renderer::render_tilesheet_png()
+            .map_err(|e| ApiError::internal(format!("render tilesheet png failed: {e}")))?;
         Ok(([(header::CONTENT_TYPE, "image/png")], png).into_response())
     }
 }

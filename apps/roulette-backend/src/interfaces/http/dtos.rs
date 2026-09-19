@@ -142,6 +142,10 @@ pub struct ErrorResponse {
 pub struct RoomImageQuery {
     /// Desired format: "png" (default) or "svg".
     pub format: Option<String>,
+    /// Desired view mode: "full" (default complete HUD card) or "board" (standalone map).
+    pub view_mode: Option<String>,
+    /// Optional cell size in pixels for standalone board mode (default 96).
+    pub cell_size: Option<u32>,
 }
 
 /// API error wrapper converting service errors to HTTP responses.

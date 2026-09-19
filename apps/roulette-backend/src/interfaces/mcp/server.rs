@@ -13,8 +13,8 @@ use serde_json::json;
 use crate::interfaces::mcp::schema::{
     RefereeCreateRoomParams, RefereeDissolveRoomParams, RefereeForceCommandParams,
     RefereeInspectRoomParams, RefereeListRoomsParams, RefereeQueryRulesParams,
-    RefereeRenderRoomImageParams, RefereeSetupBotsParams, RefereeStartMatchParams,
-    RefereeStepBotParams,
+    RefereeRenderAssetSheetParams, RefereeRenderRoomImageParams, RefereeSetupBotsParams,
+    RefereeStartMatchParams, RefereeStepBotParams,
 };
 
 /// Russian Roulette Referee and Moderator MCP server.
@@ -171,7 +171,7 @@ impl RussianRouletteMcpServer {
 
     /// Render match state and tactical board into an image (PNG base64 or SVG).
     #[tool(
-        description = "裁判将当前房间与战术棋盘按规则渲染合成精美HUD卡片图片（PNG base64或SVG格式），便于在QQ等IM会话中直观输出战况"
+        description = "裁判将当前房间与战术棋盘按规则渲染合成精美HUD卡片或独立战术棋盘图片（PNG base64或SVG格式），便于在QQ等IM会话中直观输出战况"
     )]
     async fn referee_render_room_image(
         &self,
@@ -179,6 +179,51 @@ impl RussianRouletteMcpServer {
     ) -> Result<CallToolResult, McpError> {
         match self.service.referee_inspect_room(&params.room_id) {
             Ok(room) => {
+                let is_board_only = params.view_mode.as_deref() == Some("board");
+                if let Some(game) = room.game.as_ref().filter(|_| is_board_only) {
+                    if params.format.as_deref() == Some("svg") {
+                        let svg = roulette_renderer::render_board_svg(
+                            &game.cells,
+                            &game.players,
+                            game.current_player_id,
+                            &game.records,
+                            params.cell_size,
+                        );
+                        return Ok(format_success(&json!({
+                            "room_id": params.room_id,
+                            "view_mode": "board",
+                            "format": "svg",
+                            "content_type": "image/svg+xml",
+                            "svg": svg,
+                        })));
+                    }
+                    match roulette_renderer::render_board_png(
+                        &game.cells,
+                        &game.players,
+                        game.current_player_id,
+                        &game.records,
+                        params.cell_size,
+                    ) {
+                        Ok(png_bytes) => {
+                            let b64 = crate::interfaces::mcp::dispatcher::base64_encode(&png_bytes);
+                            return Ok(format_success(&json!({
+                                "room_id": params.room_id,
+                                "view_mode": "board",
+                                "format": "png",
+                                "content_type": "image/png",
+                                "size_bytes": png_bytes.len(),
+                                "base64": b64,
+                                "data_uri": format!("data:image/png;base64,{b64}"),
+                            })));
+                        }
+                        Err(err) => {
+                            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                                "Render board error: {err}"
+                            ))]));
+                        }
+                    }
+                }
+
                 if params.format.as_deref() == Some("svg") {
                     let svg = roulette_renderer::render_match_svg(&room);
                     Ok(format_success(&json!({
@@ -207,6 +252,40 @@ impl RussianRouletteMcpServer {
                 }
             }
             Err(err) => Ok(format_service_error(&err)),
+        }
+    }
+
+    /// Render unified vector asset catalog and tilesheet into an image (PNG base64 or SVG).
+    #[tool(
+        description = "渲染纯矢量战术素材图谱总览（地形、玩家席位、弹道激光特效、天气徽记），用于视觉检视或客户端资源集成"
+    )]
+    async fn referee_render_asset_sheet(
+        &self,
+        Parameters(params): Parameters<RefereeRenderAssetSheetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if params.format.as_deref() == Some("svg") {
+            let svg = roulette_renderer::render_tilesheet_svg();
+            Ok(format_success(&json!({
+                "format": "svg",
+                "content_type": "image/svg+xml",
+                "svg": svg,
+            })))
+        } else {
+            match roulette_renderer::render_tilesheet_png() {
+                Ok(png_bytes) => {
+                    let b64 = crate::interfaces::mcp::dispatcher::base64_encode(&png_bytes);
+                    Ok(format_success(&json!({
+                        "format": "png",
+                        "content_type": "image/png",
+                        "size_bytes": png_bytes.len(),
+                        "base64": b64,
+                        "data_uri": format!("data:image/png;base64,{b64}"),
+                    })))
+                }
+                Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Render tilesheet error: {err}"
+                ))])),
+            }
         }
     }
 }

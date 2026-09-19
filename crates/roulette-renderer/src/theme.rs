@@ -2,9 +2,96 @@
 
 #![forbid(unsafe_code)]
 
-use roulette_domain::{PlayerId, Terrain, Weather};
+use roulette_domain::{CellView, PlayerId, Position, Terrain, Weather};
 
-/// Geometric dimensions and layout metrics for rendering.
+/// Dynamic geometric metrics for board and grid layouts.
+/// Supports arbitrary non-square grid dimensions while keeping individual cells square.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoardMetrics {
+    /// Number of grid columns (horizontal cells).
+    pub cols: u8,
+    /// Number of grid rows (vertical cells).
+    pub rows: u8,
+    /// Edge length of each square cell in pixels.
+    pub cell_size: u32,
+    /// Spacing between adjacent cells in pixels.
+    pub cell_gap: u32,
+    /// Outer border padding around the grid in pixels.
+    pub padding: u32,
+    /// Coordinate ruler thickness outside the grid.
+    pub ruler_offset: u32,
+}
+
+impl BoardMetrics {
+    /// Derives board metrics from a list of cell views, dynamically determining max columns and rows.
+    #[must_use]
+    pub fn from_cells(cells: &[CellView], default_size: u8) -> Self {
+        let max_x = cells.iter().map(|c| c.position.x).max().unwrap_or(0);
+        let max_y = cells.iter().map(|c| c.position.y).max().unwrap_or(0);
+        let cols = (max_x + 1).max(default_size);
+        let rows = (max_y + 1).max(default_size);
+
+        Self {
+            cols,
+            rows,
+            cell_size: 96,
+            cell_gap: 8,
+            padding: 40,
+            ruler_offset: 24,
+        }
+    }
+
+    /// Creates standalone large map metrics with custom cell size.
+    #[must_use]
+    pub fn standalone(cols: u8, rows: u8, cell_size: u32) -> Self {
+        Self {
+            cols,
+            rows,
+            cell_size,
+            cell_gap: 8,
+            padding: 44,
+            ruler_offset: 26,
+        }
+    }
+
+    /// Total pixel width of the board including grid, gaps, padding, and rulers.
+    #[must_use]
+    pub fn total_width(&self) -> u32 {
+        let cols = u32::from(self.cols);
+        let grid_w = cols * self.cell_size + cols.saturating_sub(1) * self.cell_gap;
+        grid_w + self.padding * 2
+    }
+
+    /// Total pixel height of the board including grid, gaps, padding, and rulers.
+    #[must_use]
+    pub fn total_height(&self) -> u32 {
+        let rows = u32::from(self.rows);
+        let grid_h = rows * self.cell_size + rows.saturating_sub(1) * self.cell_gap;
+        grid_h + self.padding * 2
+    }
+
+    /// Pixel X coordinate for the top-left corner of a cell at column `x`.
+    #[must_use]
+    pub fn cell_x(&self, x: u8) -> u32 {
+        self.padding + u32::from(x) * (self.cell_size + self.cell_gap)
+    }
+
+    /// Pixel Y coordinate for the top-left corner of a cell at row `y`.
+    #[must_use]
+    pub fn cell_y(&self, y: u8) -> u32 {
+        self.padding + u32::from(y) * (self.cell_size + self.cell_gap)
+    }
+
+    /// Pixel center coordinates `(cx, cy)` for a cell at `pos`.
+    #[must_use]
+    pub fn cell_center(&self, pos: Position) -> (u32, u32) {
+        let px = self.cell_x(pos.x);
+        let py = self.cell_y(pos.y);
+        (px + self.cell_size / 2, py + self.cell_size / 2)
+    }
+}
+
+/// Geometric dimensions and layout metrics for full HUD cards.
 #[derive(Debug, Clone, Copy)]
 pub struct LayoutMetrics {
     /// Overall canvas width in pixels.
@@ -124,23 +211,30 @@ impl Theme {
     /// Tactical purple accent.
     pub const ACCENT_PURPLE: Color = Color::rgb(168, 85, 247);
 
+    /// High-energy laser tracer magenta.
+    pub const ACCENT_LASER: Color = Color::rgb(255, 42, 109);
+    /// Muzzle flash starflare yellow.
+    pub const ACCENT_MUZZLE: Color = Color::rgb(255, 230, 80);
+    /// Kinetic impact burst orange.
+    pub const ACCENT_IMPACT: Color = Color::rgb(255, 110, 20);
+
     /// Returns the color palette for a terrain cell.
     #[must_use]
     pub const fn terrain_palette(terrain: Terrain) -> TerrainPalette {
         match terrain {
             Terrain::Empty => TerrainPalette {
-                fill: Color::rgb(26, 33, 47),
-                stroke: Color::rgb(42, 53, 73),
+                fill: Color::rgb(22, 28, 40),
+                stroke: Color::rgb(36, 46, 64),
                 emblem: Color::rgba(148, 163, 184, 300),
             },
             Terrain::Wall => TerrainPalette {
-                fill: Color::rgb(51, 65, 85),
+                fill: Color::rgb(45, 55, 72),
                 stroke: Color::rgb(100, 116, 139),
-                emblem: Color::rgb(203, 213, 225),
+                emblem: Color::rgb(226, 232, 240),
             },
             Terrain::Crate => TerrainPalette {
-                fill: Color::rgb(69, 43, 20),
-                stroke: Color::rgb(133, 77, 14),
+                fill: Color::rgb(60, 36, 18),
+                stroke: Color::rgb(146, 84, 18),
                 emblem: Color::rgb(245, 158, 11),
             },
             Terrain::Water => TerrainPalette {
@@ -149,12 +243,12 @@ impl Theme {
                 emblem: Color::rgb(56, 189, 248),
             },
             Terrain::Ice => TerrainPalette {
-                fill: Color::rgb(22, 78, 99),
+                fill: Color::rgb(18, 70, 92),
                 stroke: Color::rgb(56, 189, 248),
                 emblem: Color::rgb(186, 230, 253),
             },
             Terrain::Mine => TerrainPalette {
-                fill: Color::rgb(69, 10, 10),
+                fill: Color::rgb(65, 10, 10),
                 stroke: Color::rgb(220, 38, 38),
                 emblem: Color::rgb(248, 113, 113),
             },

@@ -80,14 +80,27 @@ flowchart TD
 
 - **定位与边界**：
   - 位于表现/输出层（Presentation/Output Layer），独立为 `crates/roulette-renderer`。
-  - **严格非 LLM 生成**：完全按照权威规则、地形属性与席位状态进行确定性几何与视觉推演，杜绝大模型幻觉与延迟，生成毫秒级响应。
+  - **严格非 LLM 生成**：完全按照权威规则、地形属性与席位状态进行确定性几何与纯矢量推演，杜绝大模型幻觉与延迟，生成毫秒级响应。
   - **单向只读投影**：输入仅为 `roulette-domain` 的只读快照（`RefereeRoomView`、`GameView`、`TerrainProperties`、`Weather` 等），绝不修改游戏状态或反向引入网络/存储依赖。
+- **纯程序化矢量素材库 (`assets/`) 与零 Emoji 依赖**：
+  - **地形材质渲染器 (`TerrainAssetRenderer`)**：为空地、掩体墙体（`◆◆ H:2`）、木箱（`◆ H:1`）、深水、冰面、暗雷、护盾舱、高地提供纯几何线条、光影与色阶渲染，彻底替代第三方 Emoji 字符。
+  - **战术玩家棋子 (`PlayerAssetRenderer`)**：支持席位色环（P1-P6）、真人目镜与 Bot 芯片光学探头差异化刻画、激活回合高亮金轨、护盾蜂窝力场罩与阵亡骷髅十字。
+  - **动态弹道与位移特效 (`EffectsRenderer`)**：高能激光光束（`fx-glow-laser`）、枪口星芒火星、受击致死爆点 shockwave、以及战术位移虚线箭簇。
+  - **统一素材图谱生成器 (`TileSheetRenderer`)**：一键生成全套地形、棋子、特效与天气的矢量图谱，供视觉检视与资源接入。
+- **动态自适应画幅与非方形网格支持 (`BoardMetrics`)**：
+  - 单元格严格维持正方形，但棋盘支持任意行列跨度（$Cols \times Rows$），杜绝固定方形尺寸假设。
+  - 画布尺寸依据 `BoardMetrics::from_cells` 动态严密贴合，支持纯地图独立模式（`render_board_svg` / `render_board_png`）与全 HUD 卡片模式。
 - **双通道输出支持**：
-  1. **SVG 矢量流水线 (`SvgComposer`)**：毫秒级字符串格式化拼接，具备 100% 规则保真度、无损缩放和深色战术 HUD 质感（包含 5x5 网格、硬度与层级标识、玩家专属色圆环、行动指针与护盾能量圈、天气与僵局致死率警告、最近裁定与戏剧事件横幅）；
-  2. **PNG 光栅化流水线 (`svg_to_png`)**：基于 `resvg` 与 `tiny-skia` 将矢量卡片栅格化为高质量抗锯齿 PNG 二进制字节流，自动装载系统与嵌入字体数据库，为 QQ 群聊、聊天机器人与外部 IM 提供开箱即用的富媒体卡片。
+  1. **SVG 矢量流水线 (`SvgComposer` / `BoardRenderer`)**：毫秒级矢量字符串生成，具备 100% 规则保真度、无损缩放和深色战术 HUD 质感；
+  2. **PNG 光栅化流水线 (`render_png_from_svg`)**：基于 `resvg` 与 `tiny-skia` 将矢量卡片栅格化为高质量抗锯齿 PNG 二进制字节流，为 QQ 群聊、聊天机器人与外部 IM 提供开箱即用的富媒体卡片。
 - **接口集成**：
-  - **HTTP 路由**：`GET /api/rooms/{room_id}/image?format=png|svg`（支持浏览器直接预览或图片代理）；
-  - **MCP 工具**：`referee_render_room_image`（支持传入 `room_id` 与可选 `format`，返回包含 Base64、Data URI 或 SVG 标记的标准 JSON 响应）。
+  - **HTTP 路由**：
+    - `GET /api/rooms/{room_id}/image?format=png|svg&view_mode=full|board`；
+    - `GET /api/rooms/{room_id}/board?format=png|svg&cell_size=96`（独立自适应战术大地图）；
+    - `GET /api/assets/tilesheet?format=png|svg`（全素材图谱总览）。
+  - **MCP 工具**：
+    - `referee_render_room_image`（支持 `view_mode="full"|"board"`、`cell_size` 与 `format`）；
+    - `referee_render_asset_sheet`（纯矢量素材图谱总览导出）。
 
 ### MCP 接口层与裁判/主持人角色模型 (Referee Role Model)
 
