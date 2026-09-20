@@ -303,56 +303,49 @@ impl Direction {
     }
 }
 
-/// Terrain types enabled by the local Web MVP.
+/// Ground environment types (surface terrain).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Terrain {
-    /// Walkable ground without an effect.
-    Empty,
-    /// Impassable and bullet-blocking wall.
-    Wall,
-    /// Destructible bullet-blocking crate.
-    Crate,
+    /// Walkable flat ground without special effects or impediment.
+    #[serde(alias = "empty")]
+    Plain,
     /// Walkable water that drowns a player after two consecutive turns.
     Water,
     /// Walkable high ground that grants one additional shooting tile.
     HighGround,
-    /// Walkable mine that triggers a lethal effect and then disappears.
-    Mine,
-    /// Walkable one-use pickup that grants a single lethal shield.
-    Medkit,
     /// Walkable slippery ice that alters movement and event pools.
     Ice,
 }
 
-/// Placement layer or elevation of a terrain type.
+/// Category classification of objects placed upon a ground tile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum TerrainLayer {
-    /// Above the ground (e.g. wall, crate, ice, empty).
-    AboveGround,
-    /// Below ground surface (e.g. buried landmine).
-    Underground,
-    /// Both above and below ground (e.g. deep water basin).
-    AboveAndBelow,
-    /// Special tactical or item elevation.
-    Special,
+pub enum MapObjectKind {
+    /// Impassable physical cover blocking movement and bullets.
+    Cover,
+    /// Concealed hazard/trap triggered upon entering.
+    Trap,
+    /// Tactical collectible resource.
+    Pickup,
 }
 
-impl TerrainLayer {
-    /// Human-readable Chinese label for the placement layer.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::AboveGround => "地上",
-            Self::Underground => "地下",
-            Self::AboveAndBelow => "地上且地下",
-            Self::Special => "特殊",
-        }
-    }
+/// Independent interactive objects and props residing on top of terrain tiles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MapObject {
+    /// Solid stone wall (hardness 2, blocks bullets and movement).
+    Wall,
+    /// Destructible wooden crate (hardness 1, blocks regular bullets).
+    Crate,
+    /// Concealed explosive landmine.
+    Mine,
+    /// Rechargeable tactical energy shield pickup.
+    #[serde(alias = "medkit")]
+    Shield,
 }
 
-/// Static mechanical attributes and destruction properties of a terrain type.
+/// Static attributes and tactical description of a ground terrain type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TerrainProperties {
     /// Associated terrain enum.
@@ -361,13 +354,28 @@ pub struct TerrainProperties {
     pub name: String,
     /// Map symbol.
     pub symbol: String,
-    /// Layer position: 地上 / 地下 / 地上且地下 / 特殊.
-    pub layer: TerrainLayer,
+    /// Detailed description and tactical interaction rules.
+    pub description: String,
+}
+
+/// Static mechanical attributes and descriptions for map objects.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MapObjectProperties {
+    /// Associated object enum.
+    pub object: MapObject,
+    /// Category classification.
+    pub kind: MapObjectKind,
+    /// Chinese display name.
+    pub name: String,
+    /// Map symbol.
+    pub symbol: String,
     /// Hardness rating (e.g. 1 for crate, 2 for wall) or None.
     pub hardness: Option<u32>,
-    /// Target terrain when destroyed, or None if indestructible.
-    pub transform_on_destroy: Option<Terrain>,
-    /// Detailed description and tactical interaction rules.
+    /// Whether this object blocks player movement.
+    pub blocks_movement: bool,
+    /// Whether this object blocks regular bullets.
+    pub blocks_bullets: bool,
+    /// Detailed description and tactical rules.
     pub description: String,
 }
 
@@ -376,93 +384,101 @@ impl Terrain {
     #[must_use]
     pub fn properties(self) -> TerrainProperties {
         match self {
-            Self::Empty => TerrainProperties {
-                terrain: Self::Empty,
-                name: "空地".to_string(),
+            Self::Plain => TerrainProperties {
+                terrain: Self::Plain,
+                name: "平地".to_string(),
                 symbol: String::new(),
-                layer: TerrainLayer::AboveGround,
-                hardness: None,
-                transform_on_destroy: None,
                 description: "平整坚实的常规地面，无移动阻碍与特殊物理效果。".to_string(),
-            },
-            Self::Wall => TerrainProperties {
-                terrain: Self::Wall,
-                name: "墙体".to_string(),
-                symbol: "▤".to_string(),
-                layer: TerrainLayer::AboveGround,
-                hardness: Some(2),
-                transform_on_destroy: Some(Self::Empty),
-                description: "坚硬砖石掩体，阻挡角色移动与普通弹道。普通子弹无法击穿；高温穿甲弹可直接击碎并贯穿继续射击。撞击时有极高概率致死。".to_string(),
-            },
-            Self::Crate => TerrainProperties {
-                terrain: Self::Crate,
-                name: "木箱".to_string(),
-                symbol: "▦".to_string(),
-                layer: TerrainLayer::AboveGround,
-                hardness: Some(1),
-                transform_on_destroy: Some(Self::Empty),
-                description: "轻质木制掩体，阻挡角色移动。普通子弹可击碎破坏后停下；穿甲弹击碎后可继续贯穿前行。".to_string(),
             },
             Self::Water => TerrainProperties {
                 terrain: Self::Water,
                 name: "水域".to_string(),
                 symbol: "≈".to_string(),
-                layer: TerrainLayer::AboveAndBelow,
-                hardness: None,
-                transform_on_destroy: None,
                 description: "低洼深水区域，移动涉入时会遭受深水阻滞。若连续停留两回合将溺水淘汰。弹道直接掠过不受阻挡。暴风雪天气下相变为冰面。".to_string(),
             },
             Self::HighGround => TerrainProperties {
                 terrain: Self::HighGround,
                 name: "高地".to_string(),
                 symbol: "△".to_string(),
-                layer: TerrainLayer::Special,
-                hardness: None,
-                transform_on_destroy: None,
                 description: "开阔的战术制高点，居高临下视野极佳。占据高地射击时有效射程额外增加 1 格。弹道可掠过高地。".to_string(),
-            },
-            Self::Mine => TerrainProperties {
-                terrain: Self::Mine,
-                name: "地雷".to_string(),
-                symbol: "◆".to_string(),
-                layer: TerrainLayer::Underground,
-                hardness: None,
-                transform_on_destroy: None,
-                description: "埋伏于地表之下的烈性暗雷。子弹从上方空域飞过无法引爆或破坏；角色踏入进入生命周期检测，触发 85% 引爆或 10% 哑雷。".to_string(),
-            },
-            Self::Medkit => TerrainProperties {
-                terrain: Self::Medkit,
-                name: "护盾".to_string(),
-                symbol: "✚".to_string(),
-                layer: TerrainLayer::Special,
-                hardness: None,
-                transform_on_destroy: None,
-                description: "散落的单兵便携充能护盾补给。角色踏入时拾取激活护盾，可完全抵消一次致命伤害；拾取后变为空地。".to_string(),
             },
             Self::Ice => TerrainProperties {
                 terrain: Self::Ice,
                 name: "冰面".to_string(),
                 symbol: "❄".to_string(),
-                layer: TerrainLayer::AboveGround,
-                hardness: None,
-                transform_on_destroy: None,
                 description: "极度光滑的低温冰面，踏入极易触发滑行冲刺或失控打滑。离开冰面蹬地施力有 30% 概率震碎薄冰使其相变为深水。热浪下融化为水。".to_string(),
             },
         }
     }
 
-    /// Returns the complete list of properties for all known terrains.
+    /// Returns the complete list of properties for all known ground terrains.
     #[must_use]
     pub fn all_properties() -> Vec<TerrainProperties> {
         vec![
-            Self::Wall.properties(),
-            Self::Crate.properties(),
+            Self::Plain.properties(),
             Self::Water.properties(),
             Self::Ice.properties(),
             Self::HighGround.properties(),
+        ]
+    }
+}
+
+impl MapObject {
+    /// Returns the static mechanical and tactical properties for this map object type.
+    #[must_use]
+    pub fn properties(self) -> MapObjectProperties {
+        match self {
+            Self::Wall => MapObjectProperties {
+                object: Self::Wall,
+                kind: MapObjectKind::Cover,
+                name: "墙体".to_string(),
+                symbol: "▤".to_string(),
+                hardness: Some(2),
+                blocks_movement: true,
+                blocks_bullets: true,
+                description: "坚硬砖石掩体，阻挡角色移动与普通弹道。普通子弹无法击穿；高温穿甲弹可直接击碎消除。撞击时有极高概率致死。".to_string(),
+            },
+            Self::Crate => MapObjectProperties {
+                object: Self::Crate,
+                kind: MapObjectKind::Cover,
+                name: "木箱".to_string(),
+                symbol: "▦".to_string(),
+                hardness: Some(1),
+                blocks_movement: true,
+                blocks_bullets: true,
+                description: "轻质木制掩体，阻挡角色移动。普通子弹可击碎破坏后停下；穿甲弹击碎后可继续贯穿前行。击碎时可能掉落物资。".to_string(),
+            },
+            Self::Mine => MapObjectProperties {
+                object: Self::Mine,
+                kind: MapObjectKind::Trap,
+                name: "地雷".to_string(),
+                symbol: "◆".to_string(),
+                hardness: None,
+                blocks_movement: false,
+                blocks_bullets: false,
+                description: "散布于地面的烈性暗雷。飞行子弹从上方掠过不引爆；角色踏入触发 85% 致命引爆或 10% 哑雷。触发后地雷消失，底层地貌保留。".to_string(),
+            },
+            Self::Shield => MapObjectProperties {
+                object: Self::Shield,
+                kind: MapObjectKind::Pickup,
+                name: "护盾".to_string(),
+                symbol: "✚".to_string(),
+                hardness: None,
+                blocks_movement: false,
+                blocks_bullets: false,
+                description: "散落的单兵便携充能护盾补给。子弹掠过不破坏；角色踏入时拾取激活免死护盾。拾取后补给消失，底层地貌保留。".to_string(),
+            },
+        }
+    }
+
+    /// Returns the complete list of properties for all known map objects.
+    #[must_use]
+    pub fn all_properties() -> Vec<MapObjectProperties> {
+        vec![
+            Self::Wall.properties(),
+            Self::Crate.properties(),
             Self::Mine.properties(),
-            Self::Medkit.properties(),
-            Self::Empty.properties(),
+            Self::Shield.properties(),
         ]
     }
 }
@@ -633,7 +649,7 @@ pub enum GameEvent {
         /// Responsible player, when applicable.
         by_player_id: Option<PlayerId>,
     },
-    /// A terrain tile changed.
+    /// A ground terrain tile changed naturally (e.g. water freeze, ice melt).
     TerrainChanged {
         /// Changed tile.
         position: Position,
@@ -642,12 +658,26 @@ pub enum GameEvent {
         /// New terrain.
         to: Terrain,
     },
+    /// A map object was placed or revealed on a tile.
+    ObjectPlaced {
+        /// Cell coordinate.
+        position: Position,
+        /// Placed object.
+        object: MapObject,
+    },
+    /// A map object was destroyed or consumed.
+    ObjectDestroyed {
+        /// Cell coordinate.
+        position: Position,
+        /// Destroyed object.
+        object: MapObject,
+    },
     /// A player collected a one-use item.
     ItemCollected {
         /// Collecting player.
         player_id: PlayerId,
         /// Item tile consumed by the pickup.
-        item: Terrain,
+        item: MapObject,
     },
     /// A weather or environmental shift occurred.
     WeatherChanged {
@@ -785,8 +815,10 @@ pub struct GameState {
     pub revision: u64,
     /// Square map edge length.
     pub map_size: u8,
-    /// Row-major terrain cells.
+    /// Row-major terrain cells (ground floor).
     pub terrain: Vec<Terrain>,
+    /// Row-major objects and props residing on cells.
+    pub objects: Vec<Option<MapObject>>,
     /// All players, including eliminated players.
     pub players: Vec<PlayerState>,
     /// Stable player turn order.
@@ -811,13 +843,15 @@ pub struct GameState {
     pub rounds_without_elimination: u32,
 }
 
-/// Public map cell used by the Web client.
+/// Public map cell used by clients.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CellView {
     /// Cell position.
     pub position: Position,
-    /// Visible terrain.
+    /// Ground surface terrain.
     pub terrain: Terrain,
+    /// Object or prop residing on this tile, if any.
+    pub object: Option<MapObject>,
     /// Living player occupying the cell, if any.
     pub player_id: Option<PlayerId>,
 }

@@ -4,9 +4,9 @@
 
 use roulette_domain::{
     CellView, EliminationCause, EventId, EventTier, GameEvent, GameNotification, GameRecord,
-    GameRecordContent, GameStatus, NotificationLevel, PlayerCommand, PlayerId, PlayerKind,
-    PlayerState, PlayerStatus, Position, RefereeGameView, RefereeMemberView, RefereeRoomView,
-    RoomId, RoomMemberId, RoomPhase, Terrain, Weather,
+    GameRecordContent, GameStatus, MapObject, NotificationLevel, PlayerCommand, PlayerId,
+    PlayerKind, PlayerState, PlayerStatus, Position, RefereeGameView, RefereeMemberView,
+    RefereeRoomView, RoomId, RoomMemberId, RoomPhase, Terrain, Weather,
 };
 use roulette_renderer::{render_game_png, render_game_svg, render_match_png, render_match_svg};
 
@@ -52,23 +52,24 @@ fn mock_waiting_room() -> RefereeRoomView {
 #[allow(clippy::too_many_lines)]
 fn mock_active_room() -> RefereeRoomView {
     let mut cells = Vec::new();
-    // 5x5 grid with various tactical terrain
+    // 5x5 grid with various tactical terrain & objects
     for y in 0..5 {
         for x in 0..5 {
             let pos = Position { x, y };
-            let terrain = match (x, y) {
-                (1, 1) => Terrain::Wall,
-                (2, 1) => Terrain::Crate,
-                (3, 1) => Terrain::HighGround,
-                (1, 3) => Terrain::Water,
-                (2, 3) => Terrain::Ice,
-                (3, 3) => Terrain::Mine,
-                (4, 3) => Terrain::Medkit,
-                _ => Terrain::Empty,
+            let (terrain, object) = match (x, y) {
+                (1, 1) => (Terrain::Plain, Some(MapObject::Wall)),
+                (2, 1) => (Terrain::Plain, Some(MapObject::Crate)),
+                (3, 1) => (Terrain::HighGround, None),
+                (1, 3) => (Terrain::Water, None),
+                (2, 3) => (Terrain::Ice, None),
+                (3, 3) => (Terrain::Plain, Some(MapObject::Mine)),
+                (4, 3) => (Terrain::Plain, Some(MapObject::Shield)),
+                _ => (Terrain::Plain, None),
             };
             cells.push(CellView {
                 position: pos,
                 terrain,
+                object,
                 player_id: None,
             });
         }
@@ -237,7 +238,7 @@ fn test_render_active_room_svg() {
 #[test]
 fn test_render_non_square_board() {
     use roulette_domain::{
-        CellView, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position, Terrain,
+        CellView, MapObject, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position, Terrain,
     };
     use roulette_renderer::{render_board_png, render_board_svg};
 
@@ -245,17 +246,18 @@ fn test_render_non_square_board() {
     let mut cells = Vec::new();
     for y in 0..4 {
         for x in 0..7 {
-            let terrain = match (x, y) {
-                (1, 1) => Terrain::Wall,
-                (2, 1) => Terrain::Crate,
-                (3, 2) => Terrain::Water,
-                (4, 2) => Terrain::Ice,
-                (5, 3) => Terrain::HighGround,
-                _ => Terrain::Empty,
+            let (terrain, object) = match (x, y) {
+                (1, 1) => (Terrain::Plain, Some(MapObject::Wall)),
+                (2, 1) => (Terrain::Plain, Some(MapObject::Crate)),
+                (3, 2) => (Terrain::Water, None),
+                (4, 2) => (Terrain::Ice, None),
+                (5, 3) => (Terrain::HighGround, None),
+                _ => (Terrain::Plain, None),
             };
             cells.push(CellView {
                 position: Position { x, y },
                 terrain,
+                object,
                 player_id: None,
             });
         }
@@ -312,16 +314,16 @@ fn test_render_non_square_board() {
 
 #[test]
 fn test_render_tilesheet_and_standalone_assets() {
-    use roulette_domain::{PlayerId, PlayerKind, Terrain};
+    use roulette_domain::{MapObject, PlayerId, PlayerKind, Terrain};
     use roulette_renderer::{
-        render_single_player_svg, render_single_tile_svg, render_tilesheet_png,
-        render_tilesheet_svg,
+        render_single_object_svg, render_single_player_svg, render_single_tile_svg,
+        render_tilesheet_png, render_tilesheet_svg,
     };
 
     // 1. Asset tilesheet catalog
     let sheet_svg = render_tilesheet_svg();
     assert!(sheet_svg.contains("RUSSIAN ROULETTE // PROCEDURAL VECTOR ASSET CATALOG"));
-    assert!(sheet_svg.contains("TERRAIN TILES"));
+    assert!(sheet_svg.contains("TERRAIN &amp; MAP OBJECTS"));
     assert!(sheet_svg.contains("COMBATANT TOKENS"));
     assert!(sheet_svg.contains("BALLISTIC LASER"));
 
@@ -329,8 +331,11 @@ fn test_render_tilesheet_and_standalone_assets() {
     assert_eq!(&sheet_png[0..8], &PNG_MAGIC);
     assert!(sheet_png.len() > 10_000);
 
-    // 2. Standalone single tile
-    let wall_svg = render_single_tile_svg(Terrain::Wall, 96);
+    // 2. Standalone single tile & map object
+    let highground_svg = render_single_tile_svg(Terrain::HighGround, 96);
+    assert!(highground_svg.contains("grad-highground"));
+
+    let wall_svg = render_single_object_svg(MapObject::Wall, 96);
     assert!(wall_svg.contains("grad-wall"));
     assert!(wall_svg.contains("polygon"));
 

@@ -1,8 +1,8 @@
 //! Contextual event pools and trigger points.
 
 use roulette_domain::{
-    CandidateTrace, Direction, EventId, GameState, PlayerCommand, PlayerId, Position, Terrain,
-    Weather,
+    CandidateTrace, Direction, EventId, GameState, MapObject, PlayerCommand, PlayerId, Position,
+    Terrain, Weather,
 };
 
 /// Trigger point providing contextual data to the event system.
@@ -59,6 +59,8 @@ pub enum TriggerPoint {
         position: Position,
         /// Terrain at impact point.
         hit_terrain: Terrain,
+        /// Object at impact point, if any.
+        hit_object: Option<MapObject>,
         /// Target player at impact point, if any.
         hit_player: Option<PlayerId>,
     },
@@ -477,7 +479,7 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                         let target = crate::step_position(pos, *direction, state.map_size);
                         Some(target.is_none_or(|t| {
                             let t_idx = crate::map_index(t, state.map_size).unwrap_or(0);
-                            state.terrain[t_idx] == Terrain::Wall
+                            state.objects[t_idx] == Some(MapObject::Wall)
                         }))
                     })
                     .unwrap_or(false);
@@ -513,8 +515,8 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
             _ => None,
         },
         TriggerPoint::TerrainEntered { terrain, .. } => match terrain {
-            Terrain::Empty => Some(EventPool::new(
-                "terrain_enter_empty",
+            Terrain::Plain => Some(EventPool::new(
+                "terrain_enter_plain",
                 vec![
                     PoolEntry::normal("evt_pebble_kick", 1),
                     PoolEntry::dampener("evt_nothing_happens", 99, 50),
@@ -544,29 +546,10 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                     PoolEntry::dampener("evt_nothing_happens", 40, 40),
                 ],
             )),
-            Terrain::Mine => Some(EventPool::new(
-                "terrain_enter_mine",
-                vec![
-                    PoolEntry::lethal("evt_mine_detonation", 85, 20),
-                    PoolEntry::normal("evt_mine_dud", 10),
-                    PoolEntry::dampener("evt_nothing_happens", 5, 40),
-                ],
-            )),
-            Terrain::Medkit => Some(EventPool::new(
-                "terrain_enter_medkit",
-                vec![
-                    PoolEntry::normal("evt_medkit_collect", 95),
-                    PoolEntry::dampener("evt_nothing_happens", 5, 40),
-                ],
-            )),
-            _ => Some(EventPool::new(
-                "terrain_enter_neutral",
-                vec![PoolEntry::dampener("evt_nothing_happens", 100, 50)],
-            )),
         },
         TriggerPoint::TerrainExited { terrain, .. } => match terrain {
-            Terrain::Empty => Some(EventPool::new(
-                "terrain_exit_empty",
+            Terrain::Plain => Some(EventPool::new(
+                "terrain_exit_plain",
                 vec![PoolEntry::dampener("evt_nothing_happens", 100, 50)],
             )),
             Terrain::Ice => Some(EventPool::new(
@@ -590,13 +573,9 @@ pub fn resolve_pool(trigger: &TriggerPoint, state: &GameState) -> Option<EventPo
                     PoolEntry::dampener("evt_nothing_happens", 70, 50),
                 ],
             )),
-            _ => Some(EventPool::new(
-                "terrain_exit_neutral",
-                vec![PoolEntry::dampener("evt_nothing_happens", 100, 50)],
-            )),
         },
         TriggerPoint::ProjectileImpact {
-            hit_terrain: Terrain::Crate,
+            hit_object: Some(MapObject::Crate),
             ..
         } => Some(EventPool::new(
             "crate_impact",

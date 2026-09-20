@@ -196,6 +196,10 @@ pub struct SubmitGameCommandParams {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct GetTerrainPropertiesParams {}
 
+/// Parameters for `get_object_properties`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct GetObjectPropertiesParams {}
+
 /// Returns the standard catalog of Russian Roulette Referee MCP tool specifications.
 #[must_use]
 #[allow(clippy::too_many_lines)]
@@ -301,8 +305,14 @@ pub fn standard_tool_definitions() -> Vec<McpToolDefinition> {
         },
         McpToolDefinition {
             name: "get_terrain_properties".to_string(),
-            description: "获取地图地形与特殊硬度破坏规则".to_string(),
+            description: "获取地图基础地面地形（平地、水域、高地、冰面）物理与战术规则".to_string(),
             input_schema: to_value(schemars::schema_for!(GetTerrainPropertiesParams))
+                .unwrap_or_default(),
+        },
+        McpToolDefinition {
+            name: "get_object_properties".to_string(),
+            description: "获取地图上覆物体（掩体、陷阱、补给道具）权威属性与破坏规则".to_string(),
+            input_schema: to_value(schemars::schema_for!(GetObjectPropertiesParams))
                 .unwrap_or_default(),
         },
     ]

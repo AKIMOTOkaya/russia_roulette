@@ -159,13 +159,18 @@ impl RussianRouletteMcpServer {
         }
     }
 
-    /// Query canonical terrain rules and penetration mechanics.
-    #[tool(description = "查询游戏权威规则文档、特殊地形层级与穿甲弹破坏机制")]
+    /// Query canonical terrain and map object rules.
+    #[tool(
+        description = "查询游戏权威规则文档、特殊地面地形与地图上覆物体（掩体/陷阱/道具）属性与机制"
+    )]
     async fn referee_query_rules(
         &self,
         Parameters(_params): Parameters<RefereeQueryRulesParams>,
     ) -> Result<CallToolResult, McpError> {
-        let rules = self.service.get_terrain_rules();
+        let rules = serde_json::json!({
+            "terrains": self.service.get_terrain_rules(),
+            "objects": self.service.get_object_rules(),
+        });
         Ok(format_success(&rules))
     }
 

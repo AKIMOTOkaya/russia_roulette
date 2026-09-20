@@ -168,7 +168,7 @@ pub struct EventNode {
 2. **Wave 1**：射击意图池抽中 `evt_disoriented_reverse_shot`（晕头转向向左开枪，`chain_cost = 1`）。
    - 实际指令方向改写为 `Left`，子弹飞向左侧。
 3. **Wave 2**：左侧命中木箱，触发 `evt_crate_splinter_blast`（木箱爆裂碎屑四溅，`chain_cost = 2`）。
-   - 木箱变为平地，派发冲击波次生触发到相邻地块。
+   - 木箱碎裂摧毁（底层地面完好显露），派发冲击波次生触发到相邻地块。
 4. **Wave 3**：相邻地块刚好潜伏着敌人，触发 `evt_player_hit_splinter`（被飞溅碎屑划伤并暴露，`chain_cost = 1`）。
 5. **Wave 4**：由于累积链长已达 $1+2+1=4$，子事件池阻尼权重极高，抽中收敛事件 `evt_dust_settles`（烟尘落定，`is_dampener = true`），连锁平息闭环。
 

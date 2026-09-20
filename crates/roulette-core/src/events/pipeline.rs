@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use roulette_domain::{
-    Direction, EventNodeTrace, GameEvent, GameRecordContent, GameState, PipelineTrace,
+    Direction, EventNodeTrace, GameEvent, GameRecordContent, GameState, MapObject, PipelineTrace,
     PlayerCommand, PlayerStatus, Position, Terrain, Weather,
 };
 
@@ -324,10 +324,10 @@ fn apply_meteor_strike(state: &mut GameState) -> Result<(Vec<TriggerPoint>, Stri
     let strike_idx = crate::random_index(&mut state.rng.events, state.terrain.len())?;
     let strike_pos = crate::position_from_index(strike_idx, state.map_size)?;
     let old_terrain = state.terrain[strike_idx];
-    let new_terrain = if old_terrain == Terrain::Empty {
+    let new_terrain = if old_terrain == Terrain::Plain {
         Terrain::Water
     } else {
-        Terrain::Empty
+        Terrain::Plain
     };
     state.terrain[strike_idx] = new_terrain;
     crate::push_event(
@@ -338,6 +338,16 @@ fn apply_meteor_strike(state: &mut GameState) -> Result<(Vec<TriggerPoint>, Stri
             to: new_terrain,
         },
     )?;
+
+    if let Some(obj) = state.objects[strike_idx].take() {
+        crate::push_event(
+            state,
+            GameEvent::ObjectDestroyed {
+                position: strike_pos,
+                object: obj,
+            },
+        )?;
+    }
 
     let mut struck_player = None;
     if let Some(target_idx) = crate::living_player_index_at(state, strike_pos, None) {
@@ -495,19 +505,18 @@ fn apply_crate_surprise(
     };
 
     let idx = crate::map_index(*position, state.map_size)?;
-    let (new_terrain, item_name) = if is_mine {
-        (Terrain::Mine, "现役触发式地雷")
+    let (new_obj, item_name) = if is_mine {
+        (MapObject::Mine, "现役触发式地雷")
     } else {
-        (Terrain::Medkit, "防护单兵盾")
+        (MapObject::Shield, "防护单兵盾")
     };
 
-    state.terrain[idx] = new_terrain;
+    state.objects[idx] = Some(new_obj);
     crate::push_event(
         state,
-        GameEvent::TerrainChanged {
+        GameEvent::ObjectPlaced {
             position: *position,
-            from: Terrain::Empty,
-            to: new_terrain,
+            object: new_obj,
         },
     )?;
 
@@ -536,8 +545,8 @@ fn apply_ice_slide(
     };
 
     let slide_idx = crate::map_index(slide_target, state.map_size)?;
-    let terrain = state.terrain[slide_idx];
-    let is_blocked = terrain == Terrain::Wall || terrain == Terrain::Crate;
+    let is_blocked =
+        state.objects[slide_idx].is_some_and(|o| o == MapObject::Wall || o == MapObject::Crate);
     let has_player = crate::living_player_index_at(state, slide_target, Some(*actor_id)).is_some();
 
     if !is_blocked && !has_player {
@@ -768,14 +777,13 @@ fn apply_wall_breakthrough(
         let target = from.and_then(|p| crate::step_position(p, *direction, state.map_size));
         if let (Some(from_pos), Some(target_pos)) = (from, target) {
             let t_idx = crate::map_index(target_pos, state.map_size)?;
-            if state.terrain[t_idx] == Terrain::Wall {
-                state.terrain[t_idx] = Terrain::Empty;
+            if state.objects[t_idx] == Some(MapObject::Wall) {
+                state.objects[t_idx] = None;
                 crate::push_event(
                     state,
-                    GameEvent::TerrainChanged {
+                    GameEvent::ObjectDestroyed {
                         position: target_pos,
-                        from: Terrain::Wall,
-                        to: Terrain::Empty,
+                        object: MapObject::Wall,
                     },
                 )?;
                 crate::complete_move_step(state, actor_idx, from_pos, target_pos, *direction)?;
@@ -809,14 +817,13 @@ fn apply_mine_detonation(
     if let TriggerPoint::TerrainEntered { actor_id, to, .. } = trigger {
         let to_pos = *to;
         let t_idx = crate::map_index(to_pos, state.map_size)?;
-        if state.terrain[t_idx] == Terrain::Mine {
-            state.terrain[t_idx] = Terrain::Empty;
+        if state.objects[t_idx] == Some(MapObject::Mine) {
+            state.objects[t_idx] = None;
             crate::push_event(
                 state,
-                GameEvent::TerrainChanged {
+                GameEvent::ObjectDestroyed {
                     position: to_pos,
-                    from: Terrain::Mine,
-                    to: Terrain::Empty,
+                    object: MapObject::Mine,
                 },
             )?;
         }
@@ -849,14 +856,13 @@ fn apply_mine_dud(state: &mut GameState, trigger: &TriggerPoint) -> Result<Strin
     if let TriggerPoint::TerrainEntered { to, .. } = trigger {
         let to_pos = *to;
         let t_idx = crate::map_index(to_pos, state.map_size)?;
-        if state.terrain[t_idx] == Terrain::Mine {
-            state.terrain[t_idx] = Terrain::Empty;
+        if state.objects[t_idx] == Some(MapObject::Mine) {
+            state.objects[t_idx] = None;
             crate::push_event(
                 state,
-                GameEvent::TerrainChanged {
+                GameEvent::ObjectDestroyed {
                     position: to_pos,
-                    from: Terrain::Mine,
-                    to: Terrain::Empty,
+                    object: MapObject::Mine,
                 },
             )?;
         }
@@ -875,21 +881,13 @@ fn apply_medkit_collect(
         let t_idx = crate::map_index(to_pos, state.map_size)?;
         let actor_idx = crate::player_index(state, *actor_id)?;
         state.players[actor_idx].has_shield = true;
-        if state.terrain[t_idx] == Terrain::Medkit {
-            state.terrain[t_idx] = Terrain::Empty;
+        if state.objects[t_idx] == Some(MapObject::Shield) {
+            state.objects[t_idx] = None;
             crate::push_event(
                 state,
                 GameEvent::ItemCollected {
                     player_id: *actor_id,
-                    item: Terrain::Medkit,
-                },
-            )?;
-            crate::push_event(
-                state,
-                GameEvent::TerrainChanged {
-                    position: to_pos,
-                    from: Terrain::Medkit,
-                    to: Terrain::Empty,
+                    item: MapObject::Shield,
                 },
             )?;
         }

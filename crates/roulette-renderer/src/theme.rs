@@ -2,7 +2,7 @@
 
 #![forbid(unsafe_code)]
 
-use roulette_domain::{CellView, PlayerId, Position, Terrain, Weather};
+use roulette_domain::{CellView, MapObject, PlayerId, Position, Terrain, Weather};
 
 /// Dynamic geometric metrics for board and grid layouts.
 /// Supports arbitrary non-square grid dimensions while keeping individual cells square.
@@ -229,20 +229,10 @@ impl Theme {
     #[must_use]
     pub const fn terrain_palette(terrain: Terrain) -> TerrainPalette {
         match terrain {
-            Terrain::Empty => TerrainPalette {
+            Terrain::Plain => TerrainPalette {
                 fill: Color::rgb(248, 250, 252),
                 stroke: Color::rgba(226, 232, 240, 400),
                 emblem: Color::rgba(148, 163, 184, 400),
-            },
-            Terrain::Wall => TerrainPalette {
-                fill: Color::rgb(71, 85, 105),
-                stroke: Color::rgb(51, 65, 85),
-                emblem: Color::rgb(241, 245, 249),
-            },
-            Terrain::Crate => TerrainPalette {
-                fill: Color::rgb(254, 215, 170),
-                stroke: Color::rgb(234, 88, 12),
-                emblem: Color::rgb(154, 52, 18),
             },
             Terrain::Water => TerrainPalette {
                 fill: Color::rgb(186, 230, 253),
@@ -254,20 +244,37 @@ impl Theme {
                 stroke: Color::rgb(125, 211, 252),
                 emblem: Color::rgb(14, 165, 233),
             },
-            Terrain::Mine => TerrainPalette {
-                fill: Color::rgb(254, 202, 202),
-                stroke: Color::rgb(248, 113, 113),
-                emblem: Color::rgb(220, 38, 38),
-            },
-            Terrain::Medkit => TerrainPalette {
-                fill: Color::rgb(167, 243, 208),
-                stroke: Color::rgb(52, 211, 153),
-                emblem: Color::rgb(5, 150, 105),
-            },
             Terrain::HighGround => TerrainPalette {
                 fill: Color::rgb(254, 240, 138),
                 stroke: Color::rgb(250, 204, 21),
                 emblem: Color::rgb(161, 98, 7),
+            },
+        }
+    }
+
+    /// Returns the color palette for a map object in light mode.
+    #[must_use]
+    pub const fn object_palette(object: MapObject) -> TerrainPalette {
+        match object {
+            MapObject::Wall => TerrainPalette {
+                fill: Color::rgb(71, 85, 105),
+                stroke: Color::rgb(51, 65, 85),
+                emblem: Color::rgb(241, 245, 249),
+            },
+            MapObject::Crate => TerrainPalette {
+                fill: Color::rgb(254, 215, 170),
+                stroke: Color::rgb(234, 88, 12),
+                emblem: Color::rgb(154, 52, 18),
+            },
+            MapObject::Mine => TerrainPalette {
+                fill: Color::rgb(254, 202, 202),
+                stroke: Color::rgb(248, 113, 113),
+                emblem: Color::rgb(220, 38, 38),
+            },
+            MapObject::Shield => TerrainPalette {
+                fill: Color::rgb(167, 243, 208),
+                stroke: Color::rgb(52, 211, 153),
+                emblem: Color::rgb(5, 150, 105),
             },
         }
     }

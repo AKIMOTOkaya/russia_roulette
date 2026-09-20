@@ -37,6 +37,7 @@ pub fn build_router(service: Arc<GameService>) -> Router {
         .route("/app.js", get(handlers::script))
         .route("/api/health", get(handlers::health))
         .route("/api/rules/terrains", get(handlers::terrain_rules))
+        .route("/api/rules/objects", get(handlers::object_rules))
         .route("/api/lobby", get(handlers::lobby_view))
         .route("/api/session/heartbeat", post(handlers::heartbeat))
         .route("/api/rooms", post(handlers::create_room))

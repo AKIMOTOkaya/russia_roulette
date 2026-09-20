@@ -149,14 +149,15 @@ input::placeholder { color: #555b5d; }
 .terrain-card.absent { opacity: 0.85; }
 .terrain-card-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #262c2e; padding-bottom: 8px; }
 .terrain-title-group { display: flex; align-items: center; gap: 10px; }
+.guide-section-title { margin: 16px 0 6px; font-size: 0.78rem; font-weight: 700; color: var(--gold); border-bottom: 1px solid #2d3437; padding-bottom: 4px; font-family: ui-monospace, monospace; letter-spacing: 0.06em; }
 .terrain-symbol-box { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #3d4648; font-size: 1rem; font-weight: 900; background: #0c0e10; }
-.terrain-symbol-box.wall { background: repeating-linear-gradient(135deg, #32383a 0 6px, #272c2e 6px 12px); color: #747b7d; }
-.terrain-symbol-box.crate { color: #c29f68; border-color: #59472e; }
+.terrain-symbol-box.wall, .terrain-symbol-box.object-wall { background: repeating-linear-gradient(135deg, #32383a 0 6px, #272c2e 6px 12px); color: #747b7d; }
+.terrain-symbol-box.crate, .terrain-symbol-box.object-crate { color: #c29f68; border-color: #59472e; }
 .terrain-symbol-box.water { background: #17292e; color: #6ba3ac; border-color: #2b4952; }
 .terrain-symbol-box.ice { background: #182e38; color: #8ad2ff; border-color: #3b5b6b; }
 .terrain-symbol-box.high_ground { background: #332d21; color: var(--gold); border-color: #5c4e30; }
-.terrain-symbol-box.mine { color: var(--accent-soft); border-color: #69423b; }
-.terrain-symbol-box.medkit { color: var(--green); border-color: #345c43; }
+.terrain-symbol-box.mine, .terrain-symbol-box.object-mine { color: var(--accent-soft); border-color: #69423b; }
+.terrain-symbol-box.medkit, .terrain-symbol-box.object-shield { color: var(--green); border-color: #345c43; }
 .terrain-card-name { margin: 0; font-size: 1.05rem; font-family: Georgia, "Songti SC", serif; font-weight: 400; color: var(--ink); }
 .terrain-card-id { color: #6f7576; font-size: 0.68rem; font-family: ui-monospace, monospace; }
 .terrain-present-badge { font-size: 0.62rem; font-family: ui-monospace, monospace; padding: 2px 7px; font-weight: 700; }
@@ -289,14 +290,19 @@ input::placeholder { color: #555b5d; }
 .board-stage { display: grid; grid-template-columns: minmax(350px, 1fr) 160px; gap: 14px; align-items: center; }
 .playfield { min-width: 0; }
 .board { --board-size: 5; display: grid; grid-template-columns: repeat(var(--board-size), minmax(38px, 1fr)); gap: 4px; width: min(60vh, 100%); aspect-ratio: 1; margin: 0 auto; }
-.cell { position: relative; display: grid; place-items: center; min-width: 0; border: 1px solid #303638; background: #252b2d; color: #8e9698; font-family: ui-monospace, monospace; font-size: clamp(0.75rem, 1.5vw, 1.25rem); }
-.cell.wall { background: repeating-linear-gradient(135deg, #32383a 0 8px, #272c2e 8px 16px); color: #747b7d; }
+.cell { position: relative; display: grid; place-items: center; min-width: 0; border: 1px solid #303638; background: #252b2d; color: #8e9698; font-family: ui-monospace, monospace; font-size: clamp(0.75rem, 1.5vw, 1.25rem); overflow: hidden; }
+.cell.plain, .cell.empty { background: #252b2d; }
 .cell.water { background: #17292e; color: #6ba3ac; }
 .cell.ice { background: #182e38; color: #8ad2ff; border-color: #3b5b6b; }
-.cell.high_ground { background: #332d21; color: var(--gold); }
-.cell.mine { color: var(--accent-soft); }
-.cell.medkit { color: var(--green); }
-.player-token { position: absolute; display: grid; place-items: center; width: 61%; aspect-ratio: 1; border: 2px solid #d9d6cd; border-radius: 50%; color: #121516; background: #d6d2c8; font-size: clamp(0.58rem, 1.1vw, 0.86rem); font-weight: 900; box-shadow: 0 4px 16px #0008; }
+.cell.high_ground { background: #332d21; color: var(--gold); border-color: #5c4e30; }
+
+.map-object { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 1; }
+.map-object.object-wall { background: repeating-linear-gradient(135deg, #32383a 0 8px, #272c2e 8px 16px); color: #cbd5e1; font-weight: bold; }
+.map-object.object-crate { background: #352618cc; color: #fdba74; border: 1px dashed #ea580c; }
+.map-object.object-mine { color: var(--accent-soft); }
+.map-object.object-shield, .map-object.object-medkit { color: var(--green); }
+
+.player-token { position: absolute; z-index: 2; display: grid; place-items: center; width: 61%; aspect-ratio: 1; border: 2px solid #d9d6cd; border-radius: 50%; color: #121516; background: #d6d2c8; font-size: clamp(0.58rem, 1.1vw, 0.86rem); font-weight: 900; box-shadow: 0 4px 16px #0008; }
 .player-token.bot { border-color: #c2cf90; background: #8c9b5b; }
 .player-token.self { border-color: #ffd5cc; color: white; background: var(--accent); }
 .legend { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; width: min(60vh, 100%); margin: 13px auto 0; color: var(--muted); font-size: 0.62rem; }

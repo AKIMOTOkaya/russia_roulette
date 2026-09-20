@@ -191,8 +191,19 @@ impl McpDispatcher {
                     .map_err(|e| McpError::execution_failed(e.to_string()))?;
                 to_value(result).map_err(|e| McpError::execution_failed(e.to_string()))
             }
-            "referee_query_rules" | "get_terrain_properties" => {
+            "referee_query_rules" => {
+                let rules = serde_json::json!({
+                    "terrains": self.service.get_terrain_rules(),
+                    "objects": self.service.get_object_rules(),
+                });
+                to_value(rules).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "get_terrain_properties" => {
                 let rules = self.service.get_terrain_rules();
+                to_value(rules).map_err(|e| McpError::execution_failed(e.to_string()))
+            }
+            "get_object_properties" => {
+                let rules = self.service.get_object_rules();
                 to_value(rules).map_err(|e| McpError::execution_failed(e.to_string()))
             }
             "referee_render_room_image" => {

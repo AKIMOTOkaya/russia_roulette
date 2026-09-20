@@ -43,89 +43,90 @@ const elements = Object.fromEntries([
   "terrain-help-dialog", "terrain-help-list", "terrain-present-count",
 ].map((id) => [id.replaceAll("-", "_"), document.getElementById(id)]));
 
-const terrainSymbols = { empty: "", wall: "▤", crate: "▦", water: "≈", ice: "❄", high_ground: "△", mine: "◆", medkit: "✚" };
+const terrainSymbols = { plain: "", empty: "", water: "≈", ice: "❄", high_ground: "△" };
+const objectSymbols = { wall: "▤", crate: "▦", mine: "◆", shield: "✚", medkit: "✚" };
+
 const defaultTerrainRules = [
   {
-    terrain: "wall",
-    name: "墙体",
-    symbol: "▤",
-    layer: "above_ground",
-    hardness: 2,
-    transform_on_destroy: "empty",
-    description: "坚硬砖石掩体，阻挡角色移动与普通弹道。普通子弹无法击穿；高温穿甲弹可直接击碎并贯穿继续射击。撞击时有极高概率致死。"
-  },
-  {
-    terrain: "crate",
-    name: "木箱",
-    symbol: "▦",
-    layer: "above_ground",
-    hardness: 1,
-    transform_on_destroy: "empty",
-    description: "轻质木制掩体，阻挡角色移动。普通子弹可击碎破坏后停下；穿甲弹击碎后可继续贯穿前行。"
+    terrain: "plain",
+    name: "平地",
+    symbol: "",
+    description: "平整坚实的常规地面，无移动阻碍与特殊物理效果。"
   },
   {
     terrain: "water",
     name: "水域",
     symbol: "≈",
-    layer: "above_and_below",
-    hardness: null,
-    transform_on_destroy: null,
     description: "低洼深水区域，移动涉入时会遭受深水阻滞。若连续停留两回合将溺水淘汰。弹道直接掠过不受阻挡。暴风雪天气下相变为冰面。"
   },
   {
     terrain: "ice",
     name: "冰面",
     symbol: "❄",
-    layer: "above_ground",
-    hardness: null,
-    transform_on_destroy: null,
     description: "极度光滑的低温冰面，踏入极易触发滑行冲刺或失控打滑。离开冰面蹬地施力有 30% 概率震碎薄冰使其相变为深水。热浪下融化为水。"
   },
   {
     terrain: "high_ground",
     name: "高地",
     symbol: "△",
-    layer: "special",
-    hardness: null,
-    transform_on_destroy: null,
     description: "开阔的战术制高点，居高临下视野极佳。占据高地射击时有效射程额外增加 1 格。弹道可掠过高地。"
-  },
-  {
-    terrain: "mine",
-    name: "地雷",
-    symbol: "◆",
-    layer: "underground",
-    hardness: null,
-    transform_on_destroy: null,
-    description: "埋伏于地表之下的烈性暗雷。子弹从上方空域飞过无法引爆或破坏；角色踏入进入生命周期检测，触发 85% 引爆或 10% 哑雷。"
-  },
-  {
-    terrain: "medkit",
-    name: "护盾",
-    symbol: "✚",
-    layer: "special",
-    hardness: null,
-    transform_on_destroy: null,
-    description: "散落的单兵便携充能护盾补给。角色踏入时拾取激活护盾，可完全抵消一次致命伤害；拾取后变为空地。"
-  },
-  {
-    terrain: "empty",
-    name: "空地",
-    symbol: "",
-    layer: "above_ground",
-    hardness: null,
-    transform_on_destroy: null,
-    description: "平整坚实的常规地面，无移动阻碍与特殊物理效果。"
   }
 ];
+
+const defaultObjectRules = [
+  {
+    object: "wall",
+    kind: "cover",
+    name: "墙体",
+    symbol: "▤",
+    hardness: 2,
+    blocks_movement: true,
+    blocks_bullets: true,
+    description: "坚硬砖石掩体，阻挡角色移动与普通弹道。普通子弹无法击穿；高温穿甲弹可直接击碎消除。撞击时有极高概率致死。消除后底层地面完好保留。"
+  },
+  {
+    object: "crate",
+    kind: "cover",
+    name: "木箱",
+    symbol: "▦",
+    hardness: 1,
+    blocks_movement: true,
+    blocks_bullets: true,
+    description: "轻质木制掩体，阻挡角色移动。普通子弹可击碎破坏后停下；穿甲弹击碎后可继续贯穿前行。击碎时可能掉落物资。消除后底层地面完好保留。"
+  },
+  {
+    object: "mine",
+    kind: "trap",
+    name: "地雷",
+    symbol: "◆",
+    hardness: null,
+    blocks_movement: false,
+    blocks_bullets: false,
+    description: "触发式暗雷陷阱。子弹从上方飞掠不受阻挡；角色踩入进入引爆判定。触发后暗雷清除，底层地面完好保留。"
+  },
+  {
+    object: "shield",
+    kind: "pickup",
+    name: "护盾",
+    symbol: "✚",
+    hardness: null,
+    blocks_movement: false,
+    blocks_bullets: false,
+    description: "单兵便携充能护盾补给。子弹飞掠不受阻挡；角色进入时拾取激活护盾，完全抵消一次致命伤害；拾取后道具清除，底层地面完好保留。"
+  }
+];
+
 let cachedTerrainRules = null;
+let cachedObjectRules = null;
 
 async function loadTerrainRules() {
   try {
-    const res = await fetch("/api/rules/terrains");
-    if (res.ok) {
-      cachedTerrainRules = await res.json();
-    }
+    const [tRes, oRes] = await Promise.all([
+      fetch("/api/rules/terrains"),
+      fetch("/api/rules/objects"),
+    ]);
+    if (tRes.ok) cachedTerrainRules = await tRes.json();
+    if (oRes.ok) cachedObjectRules = await oRes.json();
   } catch {}
 }
 
@@ -504,9 +505,25 @@ function renderBoard(game) {
   game.players.filter((player) => player.status === "alive" && player.position).forEach((player) => playersByCell.set(`${player.position.x}:${player.position.y}`, player));
   elements.board.replaceChildren(...game.cells.map((cell) => {
     const node = document.createElement("div");
-    node.className = `cell ${cell.terrain}`;
-    node.title = `(${cell.position.x}, ${cell.position.y}) · ${terrainName(cell.terrain)}`;
-    node.textContent = terrainSymbols[cell.terrain] || "";
+    node.className = `cell terrain-${cell.terrain} ${cell.terrain} ${cell.object ? `has-object object-${cell.object}` : ""}`;
+    let tip = `(${cell.position.x}, ${cell.position.y}) · ${terrainName(cell.terrain)}`;
+    if (cell.object) {
+      tip += ` [${objectName(cell.object)}]`;
+    }
+    node.title = tip;
+
+    if (cell.object) {
+      const objEl = document.createElement("span");
+      objEl.className = `map-object object-${cell.object}`;
+      objEl.textContent = objectSymbols[cell.object] || "";
+      node.append(objEl);
+    } else if (terrainSymbols[cell.terrain]) {
+      const terrEl = document.createElement("span");
+      terrEl.className = "terrain-symbol";
+      terrEl.textContent = terrainSymbols[cell.terrain];
+      node.append(terrEl);
+    }
+
     const player = playersByCell.get(`${cell.position.x}:${cell.position.y}`);
     if (player) {
       const token = document.createElement("span");
@@ -692,7 +709,9 @@ function eventText(event, name) {
     case "shield_consumed": return `${name(event.player_id)} 的护盾挡下致命伤害`;
     case "player_eliminated": return `${name(event.player_id)} 出局（${causeName(event.cause)}）`;
     case "terrain_changed": return `(${event.position.x}, ${event.position.y}) 的地形由 ${terrainName(event.from)} 变为 ${terrainName(event.to)}`;
-    case "item_collected": return `${name(event.player_id)} 获得护盾`;
+    case "object_placed": return `(${event.position.x}, ${event.position.y}) 出现了 ${objectName(event.object)}`;
+    case "object_destroyed": return `(${event.position.x}, ${event.position.y}) 处的 ${objectName(event.object)} 被击碎清除`;
+    case "item_collected": return `${name(event.player_id)} 拾取了 ${objectName(event.item)}`;
     case "weather_changed": return `天气异变 · 环境由 ${weatherName(event.from)} 变为 ${weatherName(event.to)}`;
     case "dramatic_event": return `[波次 ${event.wave}] ${event.title} · ${event.narrative}`;
     default: return event.type;
@@ -897,32 +916,39 @@ function renderTerrainHelpModal() {
 
   const game = room?.game;
   const terrainCounts = new Map();
+  const objectCounts = new Map();
   if (game?.cells) {
     for (const cell of game.cells) {
       terrainCounts.set(cell.terrain, (terrainCounts.get(cell.terrain) || 0) + 1);
+      if (cell.object) {
+        objectCounts.set(cell.object, (objectCounts.get(cell.object) || 0) + 1);
+      }
     }
   }
 
-  const list = [...(cachedTerrainRules || defaultTerrainRules)].sort((a, b) => {
-    const countA = terrainCounts.get(a.terrain) || 0;
-    const countB = terrainCounts.get(b.terrain) || 0;
-    if (countA > 0 && countB === 0) return -1;
-    if (countA === 0 && countB > 0) return 1;
-    if (countA !== countB) return countB - countA;
-    return 0;
-  });
+  const terrains = [...(cachedTerrainRules || defaultTerrainRules)];
+  const objects = [...(cachedObjectRules || defaultObjectRules)];
 
-  const presentSpecialCount = [...terrainCounts.entries()].filter(([t, count]) => t !== "empty" && count > 0).length;
+  const presentTerrainCount = [...terrainCounts.entries()].filter(([t, count]) => t !== "plain" && t !== "empty" && count > 0).length;
+  const presentObjectCount = [...objectCounts.entries()].filter(([, count]) => count > 0).length;
+
   if (elements.terrain_present_count) {
     elements.terrain_present_count.textContent = game
-      ? `当前地图含 ${presentSpecialCount} 种特殊地形 (共 ${list.length} 种)`
-      : `全图鉴共 ${list.length} 种特殊地形规范`;
+      ? `当前地图含 ${presentTerrainCount} 种特殊地面，${presentObjectCount} 种上覆物体`
+      : `图鉴含 4 种地面地形规范与 4 种地图物体规范`;
   }
 
-  container.replaceChildren(...list.map((t) => {
+  const nodes = [];
+
+  // 1. SECTION: GROUND TERRAINS
+  const sec1 = document.createElement("div");
+  sec1.className = "guide-section-title";
+  sec1.textContent = "▶ 基础地面地形 (GROUND TERRAINS)";
+  nodes.push(sec1);
+
+  for (const t of terrains) {
     const count = terrainCounts.get(t.terrain) || 0;
     const isPresent = count > 0;
-
     const card = document.createElement("article");
     card.className = `terrain-card ${isPresent ? "present" : "absent"} terrain-kind-${t.terrain}`;
 
@@ -948,62 +974,141 @@ function renderTerrainHelpModal() {
 
     const badge = document.createElement("span");
     badge.className = `terrain-present-badge ${isPresent ? "active" : "inactive"}`;
-    badge.textContent = isPresent ? `🟢 当前存在 (${count} 处)` : "⚪ 当前地图未包含";
+    badge.textContent = isPresent ? `🟢 当前存在 (${count} 格)` : "⚪ 当前未包含";
 
     header.append(titleGroup, badge);
 
     const propsGrid = document.createElement("div");
     propsGrid.className = "terrain-props-grid";
 
-    const posCol = document.createElement("div");
-    posCol.className = "terrain-prop-item";
-    posCol.innerHTML = `<span class="prop-label">位置层级</span><strong class="prop-val layer-${t.layer}">${layerName(t.layer)}</strong>`;
+    const typeCol = document.createElement("div");
+    typeCol.className = "terrain-prop-item";
+    typeCol.innerHTML = `<span class="prop-label">元素类别</span><strong class="prop-val layer-above_ground">基础地貌</strong>`;
 
-    const hardCol = document.createElement("div");
-    hardCol.className = "terrain-prop-item";
-    const hardnessText = t.hardness != null ? `${t.hardness}` : "none (无)";
-    hardCol.innerHTML = `<span class="prop-label">物理硬度</span><strong class="prop-val">${hardnessText}</strong>`;
+    const bulletCol = document.createElement("div");
+    bulletCol.className = "terrain-prop-item";
+    bulletCol.innerHTML = `<span class="prop-label">阻挡子弹</span><strong class="prop-val">否 (子弹掠过)</strong>`;
 
     const transCol = document.createElement("div");
     transCol.className = "terrain-prop-item";
-    const transText = t.transform_on_destroy ? terrainName(t.transform_on_destroy) : "none (无)";
-    transCol.innerHTML = `<span class="prop-label">被摧毁转换</span><strong class="prop-val">${transText}</strong>`;
+    transCol.innerHTML = `<span class="prop-label">持久底表</span><strong class="prop-val">恒定地面</strong>`;
 
-    propsGrid.append(posCol, hardCol, transCol);
+    propsGrid.append(typeCol, bulletCol, transCol);
 
     const bulletRule = document.createElement("div");
     bulletRule.className = "terrain-bullet-rule";
-    bulletRule.innerHTML = `<span class="bullet-rule-tag">弹药判定</span><span class="bullet-rule-desc">${bulletRuleText(t)}</span>`;
+    bulletRule.innerHTML = `<span class="bullet-rule-tag">地貌规则</span><span class="bullet-rule-desc">${terrainRuleText(t)}</span>`;
 
     const desc = document.createElement("p");
     desc.className = "terrain-card-desc";
     desc.textContent = t.description;
 
     card.append(header, propsGrid, bulletRule, desc);
-    return card;
-  }));
+    nodes.push(card);
+  }
+
+  // 2. SECTION: MAP OBJECTS
+  const sec2 = document.createElement("div");
+  sec2.className = "guide-section-title";
+  sec2.textContent = "▶ 地图物体与道具 (MAP OBJECTS & ITEMS)";
+  nodes.push(sec2);
+
+  for (const o of objects) {
+    const count = objectCounts.get(o.object) || 0;
+    const isPresent = count > 0;
+    const card = document.createElement("article");
+    card.className = `terrain-card ${isPresent ? "present" : "absent"} object-kind-${o.object}`;
+
+    const header = document.createElement("div");
+    header.className = "terrain-card-header";
+
+    const titleGroup = document.createElement("div");
+    titleGroup.className = "terrain-title-group";
+
+    const symbolBox = document.createElement("span");
+    symbolBox.className = `terrain-symbol-box object-${o.object}`;
+    symbolBox.textContent = o.symbol || "▫";
+
+    const nameEl = document.createElement("h3");
+    nameEl.className = "terrain-card-name";
+    nameEl.textContent = o.name;
+
+    const engId = document.createElement("code");
+    engId.className = "terrain-card-id";
+    engId.textContent = o.object;
+
+    titleGroup.append(symbolBox, nameEl, engId);
+
+    const badge = document.createElement("span");
+    badge.className = `terrain-present-badge ${isPresent ? "active" : "inactive"}`;
+    badge.textContent = isPresent ? `🟢 当前存在 (${count} 处)` : "⚪ 当前未包含";
+
+    header.append(titleGroup, badge);
+
+    const propsGrid = document.createElement("div");
+    propsGrid.className = "terrain-props-grid";
+
+    const catCol = document.createElement("div");
+    catCol.className = "terrain-prop-item";
+    catCol.innerHTML = `<span class="prop-label">物体类别</span><strong class="prop-val">${objectKindName(o.kind)}</strong>`;
+
+    const hardCol = document.createElement("div");
+    hardCol.className = "terrain-prop-item";
+    const hardnessText = o.hardness != null ? `${o.hardness}` : "none (无)";
+    hardCol.innerHTML = `<span class="prop-label">物理硬度</span><strong class="prop-val">${hardnessText}</strong>`;
+
+    const blkCol = document.createElement("div");
+    blkCol.className = "terrain-prop-item";
+    blkCol.innerHTML = `<span class="prop-label">阻挡弹道</span><strong class="prop-val">${o.blocks_bullets ? "是" : "否"}</strong>`;
+
+    const destCol = document.createElement("div");
+    destCol.className = "terrain-prop-item";
+    destCol.innerHTML = `<span class="prop-label">破坏/消除</span><strong class="prop-val" style="color:var(--gold)">移除(保留地面)</strong>`;
+
+    propsGrid.append(catCol, hardCol, blkCol, destCol);
+
+    const bulletRule = document.createElement("div");
+    bulletRule.className = "terrain-bullet-rule";
+    bulletRule.innerHTML = `<span class="bullet-rule-tag">交互判定</span><span class="bullet-rule-desc">${objectRuleText(o)}</span>`;
+
+    const desc = document.createElement("p");
+    desc.className = "terrain-card-desc";
+    desc.textContent = o.description;
+
+    card.append(header, propsGrid, bulletRule, desc);
+    nodes.push(card);
+  }
+
+  container.replaceChildren(...nodes);
 }
 
-function bulletRuleText(t) {
-  if (t.terrain === "wall") {
-    return "【硬度 2 掩体】普通子弹无法破坏并被阻挡；<strong>穿甲重弹（穿甲能力 >= 2）可击碎为平地并贯穿继续向前！</strong>";
+function terrainRuleText(t) {
+  if (t.terrain === "water") {
+    return "【深水地表】弹道掠过不受阻挡；角色涉入遭受深水阻滞，连续停留 2 回合溺亡。暴风雪天气下水面结冰。";
   }
-  if (t.terrain === "crate") {
-    return "【硬度 1 掩体】普通子弹击碎后停下；<strong>穿甲重弹击碎为平地后继续贯穿向前！</strong>";
-  }
-  if (t.terrain === "mine") {
-    return "【地下暗藏】<strong>埋藏于地表之下（合法性保护）</strong>，子弹飞掠无法引爆或击碎；角色踏入触发踩雷判定。";
-  }
-  if (t.terrain === "water" || t.terrain === "ice") {
-    return "【表面/凹地】无物理硬度，普通弹与穿甲弹直接在上方呼啸掠过，不阻挡弹道。";
+  if (t.terrain === "ice") {
+    return "【光滑冰面】弹道掠过不受阻挡；踏入可能滑行冲刺或失控；离开施力有 30% 概率薄冰震碎相变为水。热浪下融化为水。";
   }
   if (t.terrain === "high_ground") {
-    return "【战术高台】无物理硬度，子弹掠过不阻挡；占据高地射击时有效射程额外增加 1 格。";
+    return "【战术高台】弹道掠过不受阻挡；占据高地射击时有效射程额外增加 1 格。";
   }
-  if (t.terrain === "medkit") {
-    return "【战术补给】特殊补给箱，子弹掠过不阻挡；角色进入拾取激活护盾。";
+  return "【常规地面】平整开阔，弹道与角色移动无任何额外限制。";
+}
+
+function objectRuleText(o) {
+  if (o.object === "wall") {
+    return "【硬度 2 掩体】阻挡移动与普通弹；普通子弹无法破坏；<strong>穿甲重弹（穿甲能力 >= 2）可击碎消除墙体并贯穿前行！消除后底层地面完好保留。</strong>";
   }
-  return "常规平地地面，无物理硬度，弹道正常穿越。";
+  if (o.object === "crate") {
+    return "【硬度 1 掩体】阻挡移动与普通弹；普通子弹击碎后停下；<strong>穿甲重弹击碎后继续贯通穿透！消除后底层地面完好保留，可能掉落物资。</strong>";
+  }
+  if (o.object === "mine") {
+    return "【陷阱道具】不阻挡弹道；角色踩入触发踩雷生命周期判定（引爆或哑雷）；<strong>触发后暗雷清除，底层地面完好保留。</strong>";
+  }
+  if (o.object === "shield" || o.object === "medkit") {
+    return "【战术补给】不阻挡弹道；角色踩入拾取激活护盾，抵消一次致命伤害；<strong>拾取后道具清除，底层地面完好保留。</strong>";
+  }
+  return "地图物体交互判定。";
 }
 
 function renderEventDebugTo(container, countElement, isSidebar = false) {
@@ -1157,9 +1262,9 @@ function safeJson(response) { return response.json().catch(() => null); }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]); }
 function phaseName(phase) { return ({ waiting: "等待中", playing: "对局中", finished: "已结束" })[phase] || phase; }
 function directionName(direction) { return ({ up: "上", down: "下", left: "左", right: "右" })[direction]; }
-function causeName(cause) { return ({ shot: "射击", elbow_duel: "肘击", mine: "地雷", drowned: "溺水", suicide: "主动结束", collision: "猛烈撞墙" })[cause] || cause; }
-function terrainName(terrain) { return ({ empty: "空地", wall: "墙体", crate: "木箱", water: "水域", ice: "冰面", high_ground: "高地", mine: "地雷", medkit: "护盾" })[terrain] || terrain; }
-function layerName(layer) { return ({ above_ground: "地上", underground: "地下", above_and_below: "地上且地下", special: "特殊" })[layer] || layer; }
+function terrainName(terrain) { return ({ plain: "平地", empty: "平地", water: "水域", ice: "冰面", high_ground: "高地" })[terrain] || terrain; }
+function objectName(obj) { return ({ wall: "墙体", crate: "木箱", mine: "地雷", shield: "护盾", medkit: "护盾" })[obj] || obj; }
+function objectKindName(kind) { return ({ cover: "掩体障碍", trap: "陷阱道具", pickup: "战术物资" })[kind] || kind; }
 function weatherName(weather) { return ({ clear: "晴朗", blizzard: "暴雪", heatwave: "热浪", dense_fog: "浓雾" })[weather] || weather; }
 
 async function startClient() {

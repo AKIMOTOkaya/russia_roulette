@@ -6,11 +6,13 @@
 #![forbid(unsafe_code)]
 
 pub mod effects;
+pub mod object;
 pub mod player;
 pub mod terrain;
 pub mod tilesheet;
 
 pub use effects::EffectsRenderer;
+pub use object::ObjectAssetRenderer;
 pub use player::PlayerAssetRenderer;
 pub use terrain::TerrainAssetRenderer;
 pub use tilesheet::TileSheetRenderer;

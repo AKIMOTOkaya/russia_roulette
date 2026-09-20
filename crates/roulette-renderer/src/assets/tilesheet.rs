@@ -6,11 +6,12 @@
 #![forbid(unsafe_code)]
 
 use roulette_domain::{
-    Direction, PlayerId, PlayerKind, PlayerState, PlayerStatus, Terrain, Weather,
+    Direction, MapObject, PlayerId, PlayerKind, PlayerState, PlayerStatus, Terrain, Weather,
 };
 
 use crate::RenderError;
 use crate::assets::effects::EffectsRenderer;
+use crate::assets::object::ObjectAssetRenderer;
 use crate::assets::player::PlayerAssetRenderer;
 use crate::assets::terrain::TerrainAssetRenderer;
 use crate::theme::Theme;
@@ -49,25 +50,28 @@ impl TileSheetRenderer {
         ));
         svg.push_str("  </g>\n\n");
 
-        // SECTION 1: TERRAIN TILES (8 tiles)
+        // SECTION 1: TERRAIN TILES & MAP OBJECTS
         let s1_y = 106;
         svg.push_str(&format!(
-            "  <g id=\"section-terrain\">\n    <text x=\"40\" y=\"{s1_y}\" font-size=\"14\" font-weight=\"bold\" fill=\"#0284c7\" letter-spacing=\"1\">[01] TERRAIN TILES (8 TYPES // 96×96 UNIT)</text>\n"
+            "  <g id=\"section-terrain\">\n    <text x=\"40\" y=\"{s1_y}\" font-size=\"14\" font-weight=\"bold\" fill=\"#0284c7\" letter-spacing=\"1\">[01] TERRAIN &amp; MAP OBJECTS (4 TERRAINS + 4 OBJECTS // 96×96 UNIT)</text>\n"
         ));
 
         let terrains = [
-            (Terrain::Empty, "EMPTY // 平原空地", "walkable ground"),
-            (Terrain::Wall, "WALL // 掩体墙", "H:2 / absorbs 2"),
-            (Terrain::Crate, "CRATE // 木箱", "H:1 / breakable"),
-            (Terrain::Water, "WATER // 深水", "drowning hazard"),
-            (Terrain::Ice, "ICE // 冰面", "sliding surface"),
-            (Terrain::Mine, "MINE // 暗雷", "lethal blast"),
-            (Terrain::Medkit, "SHIELD // 护盾舱", "blocks 1 lethal"),
+            (Terrain::Plain, "PLAIN // 平原地面", "walkable base ground"),
+            (Terrain::Water, "WATER // 深水水域", "drowning hazard"),
+            (Terrain::Ice, "ICE // 结冰地面", "sliding surface"),
             (
                 Terrain::HighGround,
-                "HIGHGROUND // 高地",
+                "HIGHGROUND // 战略高地",
                 "range +1 / vantage",
             ),
+        ];
+
+        let objects = [
+            (MapObject::Wall, "WALL // 掩体墙体", "H:2 / absorbs 2"),
+            (MapObject::Crate, "CRATE // 木箱掩体", "H:1 / breakable"),
+            (MapObject::Mine, "MINE // 地雷陷阱", "lethal blast"),
+            (MapObject::Shield, "SHIELD // 单兵护盾", "blocks 1 lethal"),
         ];
 
         let cell_size = 96;
@@ -75,23 +79,40 @@ impl TileSheetRenderer {
         let start_x = 40;
         let tile_y = s1_y + 16;
 
-        for (i, (terr, title, desc)) in terrains.iter().enumerate() {
-            let col = (i % 4) as u32;
-            let row = (i / 4) as u32;
-            let px = start_x + col * (cell_size + tile_gap + 120);
-            let py = tile_y + row * (cell_size + 48);
+        for (col, (terr, title, desc)) in terrains.iter().enumerate() {
+            let px = start_x + (col as u32) * (cell_size + tile_gap + 120);
+            let py = tile_y;
 
-            // For Empty demo, draw a subtle plate container so the ground dot is contextualized
-            if *terr == Terrain::Empty {
+            if *terr == Terrain::Plain {
                 svg.push_str(&format!(
                     "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"#f8fafc\" stroke=\"#e2e8f0\" stroke-width=\"1.5\" />\n"
                 ));
             }
 
-            // Render procedural terrain
             svg.push_str(&TerrainAssetRenderer::render(px, py, cell_size, *terr));
 
-            // Labels to the right of tile
+            let text_x = px + cell_size + 12;
+            svg.push_str(&format!(
+                "    <text x=\"{text_x}\" y=\"{}\" font-size=\"12\" font-weight=\"bold\" fill=\"#0f172a\">{title}</text>\n",
+                py + 34
+            ));
+            svg.push_str(&format!(
+                "    <text x=\"{text_x}\" y=\"{}\" font-size=\"11\" fill=\"#64748b\">{desc}</text>\n",
+                py + 54
+            ));
+        }
+
+        let obj_y = tile_y + cell_size + 48;
+        for (col, (obj, title, desc)) in objects.iter().enumerate() {
+            let px = start_x + (col as u32) * (cell_size + tile_gap + 120);
+            let py = obj_y;
+
+            svg.push_str(&format!(
+                "    <rect x=\"{px}\" y=\"{py}\" width=\"{cell_size}\" height=\"{cell_size}\" rx=\"8\" fill=\"#f8fafc\" stroke=\"#e2e8f0\" stroke-width=\"1.5\" />\n"
+            ));
+
+            svg.push_str(&ObjectAssetRenderer::render(px, py, cell_size, *obj));
+
             let text_x = px + cell_size + 12;
             svg.push_str(&format!(
                 "    <text x=\"{text_x}\" y=\"{}\" font-size=\"12\" font-weight=\"bold\" fill=\"#0f172a\">{title}</text>\n",

@@ -388,13 +388,13 @@ mod tests {
 
     #[test]
     fn solo_mode_host_steps_each_bot_individually() {
-        let mut lobby = LocalLobby::new(42);
+        let mut lobby = LocalLobby::new(6);
         let owner = tab("solo-owner");
         let room = create(&mut lobby, &owner, None);
         lobby.add_bot(&room.id.0, &owner).expect("add bot 1");
         lobby.add_bot(&room.id.0, &owner).expect("add bot 2");
 
-        let started = lobby.start_room(&room.id.0, &owner, 100).expect("start");
+        let started = lobby.start_room(&room.id.0, &owner, 6).expect("start");
         let rev0 = started.game.as_ref().expect("game").revision;
 
         // Human turn (Player 1)

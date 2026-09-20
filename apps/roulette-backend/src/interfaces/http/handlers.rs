@@ -10,7 +10,9 @@ use axum::{
     http::{StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
-use roulette_domain::{LobbyView, RoomView, ServerMode, TabId, TerrainProperties, UserIdentity};
+use roulette_domain::{
+    LobbyView, MapObjectProperties, RoomView, ServerMode, TabId, TerrainProperties, UserIdentity,
+};
 use roulette_host::{CreateRoomConfig, GameService, JoinRoomConfig, ServerSettings};
 
 use crate::interfaces::http::dtos::{
@@ -61,11 +63,18 @@ pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-/// Queries authoritative definitions and hardness properties of game terrains.
+/// Queries authoritative definitions and properties of game terrains.
 pub async fn terrain_rules(
     State(service): State<Arc<GameService>>,
 ) -> Json<Vec<TerrainProperties>> {
     Json(service.get_terrain_rules())
+}
+
+/// Queries authoritative definitions and properties of map objects (cover, traps, pickups).
+pub async fn object_rules(
+    State(service): State<Arc<GameService>>,
+) -> Json<Vec<MapObjectProperties>> {
+    Json(service.get_object_rules())
 }
 
 /// Fetches current lobby rooms visible to requesting tab.

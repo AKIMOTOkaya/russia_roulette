@@ -21,13 +21,17 @@ pub mod raster;
 pub mod svg;
 pub mod theme;
 
-pub use assets::{EffectsRenderer, PlayerAssetRenderer, TerrainAssetRenderer, TileSheetRenderer};
+pub use assets::{
+    EffectsRenderer, ObjectAssetRenderer, PlayerAssetRenderer, TerrainAssetRenderer,
+    TileSheetRenderer,
+};
 pub use raster::RasterError;
 pub use svg::{SvgComposer, board::BoardRenderer};
 pub use theme::{BoardMetrics, LayoutMetrics, Theme};
 
 use roulette_domain::{
-    CellView, GameRecord, GameView, PlayerId, PlayerKind, PlayerState, RefereeRoomView, Terrain,
+    CellView, GameRecord, GameView, MapObject, PlayerId, PlayerKind, PlayerState, RefereeRoomView,
+    Terrain,
 };
 use thiserror::Error;
 
@@ -135,6 +139,18 @@ pub fn render_single_tile_svg(terrain: Terrain, cell_size: u32) -> String {
     );
     svg.push_str(assets::render_shared_defs());
     svg.push_str(&TerrainAssetRenderer::render(0, 0, cell_size, terrain));
+    svg.push_str("</svg>\n");
+    svg
+}
+
+/// Renders a single square map object as a standalone SVG document.
+#[must_use]
+pub fn render_single_object_svg(object: MapObject, cell_size: u32) -> String {
+    let mut svg = format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{cell_size}\" height=\"{cell_size}\" viewBox=\"0 0 {cell_size} {cell_size}\">\n"
+    );
+    svg.push_str(assets::render_shared_defs());
+    svg.push_str(&ObjectAssetRenderer::render(0, 0, cell_size, object));
     svg.push_str("</svg>\n");
     svg
 }

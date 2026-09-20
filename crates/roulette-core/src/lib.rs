@@ -12,9 +12,9 @@ use std::fmt::{Display, Formatter};
 
 use roulette_domain::{
     BlockReason, CellView, CreateGameConfig, Direction, EliminationCause, GameEvent,
-    GameNotification, GameRecord, GameRecordContent, GameState, GameStatus, GameView,
+    GameNotification, GameRecord, GameRecordContent, GameState, GameStatus, GameView, MapObject,
     NotificationLevel, PlayerCommand, PlayerId, PlayerKind, PlayerState, PlayerStatus, Position,
-    RefereeGameView, RngStreams, Terrain, TerrainLayer, Weather,
+    RefereeGameView, RngStreams, Terrain, Weather,
 };
 
 pub mod events;
@@ -103,26 +103,32 @@ impl GameEngine {
             bot: derive_stream(config.seed, 0x424F_5404),
             events: derive_stream(config.seed, 0x4556_5405),
         };
-        let mut terrain = vec![Terrain::Empty; cell_count];
+        let mut terrain = vec![Terrain::Plain; cell_count];
+        let mut objects = vec![None; cell_count];
+
+        let special_ground = [Terrain::Water, Terrain::HighGround, Terrain::Ice];
+        for ground in special_ground.into_iter().take(config.players.len()) {
+            place_terrain(&mut terrain, ground, &mut rng.map)?;
+        }
 
         let wall_count = config.players.len().div_ceil(3);
         for _ in 0..wall_count {
-            place_terrain(&mut terrain, Terrain::Wall, &mut rng.map)?;
+            place_object(&mut objects, MapObject::Wall, &mut rng.map)?;
         }
-        let special_terrain = [
-            Terrain::Water,
-            Terrain::Crate,
-            Terrain::Mine,
-            Terrain::Medkit,
-            Terrain::HighGround,
+        let tactical_objects = [
+            MapObject::Crate,
+            MapObject::Mine,
+            MapObject::Shield,
+            MapObject::Crate,
         ];
-        for special in special_terrain.into_iter().take(config.players.len()) {
-            place_terrain(&mut terrain, special, &mut rng.map)?;
+        for obj in tactical_objects.into_iter().take(config.players.len()) {
+            place_object(&mut objects, obj, &mut rng.map)?;
         }
 
         let mut players = Vec::with_capacity(config.players.len());
         for (index, setup) in config.players.into_iter().enumerate() {
-            let position_index = choose_empty_cell(&terrain, &players, map_size, &mut rng.map)?;
+            let position_index =
+                choose_player_spawn_cell(&objects, &players, map_size, &mut rng.map)?;
             let player_number = u32::try_from(index + 1)
                 .map_err(|_| CoreError::InvalidState("player id does not fit in u32"))?;
             players.push(PlayerState {
@@ -144,6 +150,7 @@ impl GameEngine {
             revision: 0,
             map_size,
             terrain,
+            objects,
             players,
             turn_order,
             current_turn_index: 0,
@@ -335,8 +342,9 @@ impl GameEngine {
                 };
                 cursor = next;
                 let t_idx = map_index(cursor, state.map_size)?;
-                let terrain = state.terrain[t_idx];
-                if terrain == Terrain::Wall || terrain == Terrain::Crate {
+                if let Some(obj) = state.objects[t_idx]
+                    && (obj == MapObject::Wall || obj == MapObject::Crate)
+                {
                     break;
                 }
                 if living_player_index_at(state, cursor, Some(actor_id)).is_some() {
@@ -379,9 +387,10 @@ impl GameEngine {
         for &dir in &directions {
             if let Some(next_pos) = step_position(origin, dir, state.map_size) {
                 let next_idx = map_index(next_pos, state.map_size)?;
-                let terrain = state.terrain[next_idx];
-                if terrain != Terrain::Wall && terrain != Terrain::Crate && terrain != Terrain::Mine
-                {
+                let blocked = state.objects[next_idx].is_some_and(|o| {
+                    o == MapObject::Wall || o == MapObject::Crate || o == MapObject::Mine
+                });
+                if !blocked {
                     visited[next_idx] = true;
                     queue.push_back((next_pos, dir));
                 }
@@ -401,11 +410,10 @@ impl GameEngine {
                     let n_idx = map_index(neighbor_pos, state.map_size)?;
                     if !visited[n_idx] {
                         visited[n_idx] = true;
-                        let terrain = state.terrain[n_idx];
-                        if terrain != Terrain::Wall
-                            && terrain != Terrain::Crate
-                            && terrain != Terrain::Mine
-                        {
+                        let blocked = state.objects[n_idx].is_some_and(|o| {
+                            o == MapObject::Wall || o == MapObject::Crate || o == MapObject::Mine
+                        });
+                        if !blocked {
                             queue.push_back((neighbor_pos, initial_dir));
                         }
                     }
@@ -423,9 +431,10 @@ impl GameEngine {
         for &dir in &directions {
             if let Some(next_pos) = step_position(origin, dir, state.map_size) {
                 let n_idx = map_index(next_pos, state.map_size)?;
-                let terrain = state.terrain[n_idx];
-                if terrain != Terrain::Wall && terrain != Terrain::Crate && terrain != Terrain::Mine
-                {
+                let blocked = state.objects[n_idx].is_some_and(|o| {
+                    o == MapObject::Wall || o == MapObject::Crate || o == MapObject::Mine
+                });
+                if !blocked {
                     safe_fallback_dirs.push(dir);
                 }
             }
@@ -443,8 +452,9 @@ impl GameEngine {
         for &dir in &directions {
             if let Some(next_pos) = step_position(origin, dir, state.map_size) {
                 let n_idx = map_index(next_pos, state.map_size)?;
-                let terrain = state.terrain[n_idx];
-                if terrain == Terrain::Crate || terrain == Terrain::Wall {
+                let is_obstacle = state.objects[n_idx]
+                    .is_some_and(|o| o == MapObject::Wall || o == MapObject::Crate);
+                if is_obstacle {
                     obstacle_dirs.push(dir);
                 }
             }
@@ -487,6 +497,7 @@ impl GameEngine {
             .enumerate()
             .map(|(index, terrain)| {
                 let position = position_from_index(index, state.map_size)?;
+                let object = state.objects.get(index).copied().flatten();
                 let player_id = state
                     .players
                     .iter()
@@ -497,6 +508,7 @@ impl GameEngine {
                 Ok(CellView {
                     position,
                     terrain,
+                    object,
                     player_id,
                 })
             })
@@ -538,6 +550,7 @@ impl GameEngine {
             .enumerate()
             .map(|(index, terrain)| {
                 let position = position_from_index(index, state.map_size)?;
+                let object = state.objects.get(index).copied().flatten();
                 let player_id = state
                     .players
                     .iter()
@@ -548,6 +561,7 @@ impl GameEngine {
                 Ok(CellView {
                     position,
                     terrain,
+                    object,
                     player_id,
                 })
             })
@@ -602,8 +616,8 @@ fn apply_move(
         return Ok(());
     };
     let target_index = map_index(target, state.map_size)?;
-    match state.terrain[target_index] {
-        Terrain::Wall => {
+    match state.objects[target_index] {
+        Some(MapObject::Wall) => {
             push_event(
                 state,
                 GameEvent::MoveBlocked {
@@ -613,7 +627,7 @@ fn apply_move(
             )?;
             return Ok(());
         }
-        Terrain::Crate => {
+        Some(MapObject::Crate) => {
             push_event(
                 state,
                 GameEvent::MoveBlocked {
@@ -689,7 +703,13 @@ fn complete_move_step(
     state.players[actor_index].position = Some(to);
     push_event(state, GameEvent::Moved { actor_id, from, to })?;
 
-    // 3. TerrainEntered check
+    // 3. Resolve landing on object (e.g. mine / shield)
+    resolve_landing_terrain(state, actor_index, to)?;
+    if state.players[actor_index].status != PlayerStatus::Alive {
+        return Ok(());
+    }
+
+    // 4. TerrainEntered check
     let to_terrain = state.terrain[map_index(to, state.map_size)?];
     let enter_trigger = events::TriggerPoint::TerrainEntered {
         actor_id,
@@ -708,36 +728,27 @@ pub(crate) fn resolve_landing_terrain(
     actor_index: usize,
     position: Position,
 ) -> Result<(), CoreError> {
-    let terrain_index = map_index(position, state.map_size)?;
-    match state.terrain[terrain_index] {
-        Terrain::Mine => {
-            state.terrain[terrain_index] = Terrain::Empty;
+    let obj_index = map_index(position, state.map_size)?;
+    match state.objects[obj_index] {
+        Some(MapObject::Mine) => {
+            state.objects[obj_index] = None;
             push_event(
                 state,
-                GameEvent::TerrainChanged {
+                GameEvent::ObjectDestroyed {
                     position,
-                    from: Terrain::Mine,
-                    to: Terrain::Empty,
+                    object: MapObject::Mine,
                 },
             )?;
             eliminate_player(state, actor_index, EliminationCause::Mine, None, true)?;
         }
-        Terrain::Medkit => {
+        Some(MapObject::Shield) => {
             state.players[actor_index].has_shield = true;
-            state.terrain[terrain_index] = Terrain::Empty;
+            state.objects[obj_index] = None;
             push_event(
                 state,
                 GameEvent::ItemCollected {
                     player_id: state.players[actor_index].id,
-                    item: Terrain::Medkit,
-                },
-            )?;
-            push_event(
-                state,
-                GameEvent::TerrainChanged {
-                    position,
-                    from: Terrain::Medkit,
-                    to: Terrain::Empty,
+                    item: MapObject::Shield,
                 },
             )?;
         }
@@ -775,26 +786,21 @@ fn apply_shot(
         cursor = next;
         let terrain_index = map_index(cursor, state.map_size)?;
         let current_terrain = state.terrain[terrain_index];
-        let props = current_terrain.properties();
 
-        // 1. Terrain interaction, hardness check and legality protection
-        if props.layer == TerrainLayer::AboveGround && props.hardness.is_some() {
-            let hardness = props.hardness.unwrap_or(0);
-            let Some(target_terrain) = props.transform_on_destroy else {
-                hit_something = true;
-                break;
-            };
-
+        // 1. Object interaction, hardness check and destruction
+        if let Some(obj) = state.objects[terrain_index]
+            && obj.properties().blocks_bullets
+        {
+            let hardness = obj.properties().hardness.unwrap_or(0);
             if piercing {
                 if hardness <= 2 {
                     // Armor-piercing bullet: destroys hardness <= 2 (including Wall and Crate)
-                    state.terrain[terrain_index] = target_terrain;
+                    state.objects[terrain_index] = None;
                     push_event(
                         state,
-                        GameEvent::TerrainChanged {
+                        GameEvent::ObjectDestroyed {
                             position: cursor,
-                            from: current_terrain,
-                            to: target_terrain,
+                            object: obj,
                         },
                     )?;
                     hit_something = true;
@@ -802,6 +808,7 @@ fn apply_shot(
                         shooter_id: actor_id,
                         position: cursor,
                         hit_terrain: current_terrain,
+                        hit_object: Some(obj),
                         hit_player: None,
                     };
                     events::EventTreePipeline::default().run(state, impact_trigger)?;
@@ -811,14 +818,13 @@ fn apply_shot(
                     break;
                 }
             } else if hardness <= 1 {
-                // Normal bullet destroys fragile terrain (e.g. Crate) and stops
-                state.terrain[terrain_index] = target_terrain;
+                // Normal bullet destroys fragile object (e.g. Crate) and stops
+                state.objects[terrain_index] = None;
                 push_event(
                     state,
-                    GameEvent::TerrainChanged {
+                    GameEvent::ObjectDestroyed {
                         position: cursor,
-                        from: current_terrain,
-                        to: target_terrain,
+                        object: obj,
                     },
                 )?;
                 hit_something = true;
@@ -826,6 +832,7 @@ fn apply_shot(
                     shooter_id: actor_id,
                     position: cursor,
                     hit_terrain: current_terrain,
+                    hit_object: Some(obj),
                     hit_player: None,
                 };
                 events::EventTreePipeline::default().run(state, impact_trigger)?;
@@ -904,8 +911,9 @@ fn apply_recoil(
         return Ok(());
     };
     let target_index = map_index(target, state.map_size)?;
-    let terrain = state.terrain[target_index];
-    if terrain == Terrain::Wall || terrain == Terrain::Crate {
+    let is_obstacle =
+        state.objects[target_index].is_some_and(|o| o == MapObject::Wall || o == MapObject::Crate);
+    if is_obstacle {
         return Ok(());
     }
     if living_player_index_at(state, target, Some(actor_id)).is_some() {
@@ -1099,27 +1107,49 @@ fn place_terrain(
     let available = terrain
         .iter()
         .enumerate()
-        .filter_map(|(index, terrain)| (*terrain == Terrain::Empty).then_some(index))
+        .filter_map(|(index, t)| (*t == Terrain::Plain).then_some(index))
         .collect::<Vec<_>>();
     let selected = available
         .get(random_index(rng_state, available.len())?)
         .copied()
-        .ok_or(CoreError::InvalidState("no empty terrain cell available"))?;
+        .ok_or(CoreError::InvalidState("no plain terrain cell available"))?;
     terrain[selected] = value;
     Ok(())
 }
 
-fn choose_empty_cell(
-    terrain: &[Terrain],
+fn place_object(
+    objects: &mut [Option<MapObject>],
+    value: MapObject,
+    rng_state: &mut u64,
+) -> Result<(), CoreError> {
+    let available = objects
+        .iter()
+        .enumerate()
+        .filter_map(|(index, obj)| obj.is_none().then_some(index))
+        .collect::<Vec<_>>();
+    let selected = available
+        .get(random_index(rng_state, available.len())?)
+        .copied()
+        .ok_or(CoreError::InvalidState(
+            "no empty cell available for object",
+        ))?;
+    objects[selected] = Some(value);
+    Ok(())
+}
+
+fn choose_player_spawn_cell(
+    objects: &[Option<MapObject>],
     players: &[PlayerState],
     map_size: u8,
     rng_state: &mut u64,
 ) -> Result<usize, CoreError> {
-    let available = terrain
+    let available = objects
         .iter()
         .enumerate()
-        .filter_map(|(index, terrain)| {
-            if *terrain != Terrain::Empty {
+        .filter_map(|(index, obj)| {
+            if let Some(o) = obj
+                && (*o == MapObject::Wall || *o == MapObject::Crate || *o == MapObject::Mine)
+            {
                 return None;
             }
             let position = position_from_index(index, map_size).ok()?;
@@ -1429,7 +1459,7 @@ mod tests {
             let target = crate::step_position(pos, *dir, state.map_size);
             target.is_some_and(|t| {
                 let t_idx = crate::map_index(t, state.map_size).unwrap_or(0);
-                state.terrain[t_idx] != Terrain::Wall
+                state.objects[t_idx] != Some(MapObject::Wall)
             })
         })
         .expect("free dir");
@@ -1584,7 +1614,7 @@ mod tests {
             let target = crate::step_position(pos, *dir, state.map_size);
             target.is_none_or(|t| {
                 let t_idx = crate::map_index(t, state.map_size).unwrap();
-                state.terrain[t_idx] == Terrain::Wall
+                state.objects[t_idx] == Some(MapObject::Wall)
             })
         })
         .expect("blocked dir");
@@ -1653,7 +1683,7 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_terrain_has_high_nothing_happens_rate() {
+    fn test_plain_terrain_has_high_nothing_happens_rate() {
         use crate::events::{TriggerPoint, resolve_pool};
 
         let state = GameEngine::create_game(test_config(55)).expect("game");
@@ -1661,11 +1691,11 @@ mod tests {
             actor_id: state.players[0].id,
             from: Position { x: 1, y: 1 },
             to: Position { x: 1, y: 2 },
-            terrain: Terrain::Empty,
+            terrain: Terrain::Plain,
             direction: Direction::Down,
         };
         let pool = resolve_pool(&enter_trigger, &state).expect("pool");
-        assert_eq!(pool.name, "terrain_enter_empty");
+        assert_eq!(pool.name, "terrain_enter_plain");
         let mut rng = 123;
         let (_, _, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
         let nothing_cand = candidates
@@ -1678,11 +1708,11 @@ mod tests {
             actor_id: state.players[0].id,
             from: Position { x: 1, y: 1 },
             to: Position { x: 1, y: 2 },
-            terrain: Terrain::Empty,
+            terrain: Terrain::Plain,
             direction: Direction::Down,
         };
         let exit_pool = resolve_pool(&exit_trigger, &state).expect("exit pool");
-        assert_eq!(exit_pool.name, "terrain_exit_empty");
+        assert_eq!(exit_pool.name, "terrain_exit_plain");
         let (_, _, _, exit_cands) = exit_pool.roll_with_trace(0, 0, &mut rng);
         let exit_nothing = exit_cands
             .iter()
@@ -1692,32 +1722,17 @@ mod tests {
     }
 
     #[test]
-    fn test_mine_terrain_enter_triggers_detonation_or_dud() {
-        use crate::events::{TriggerPoint, resolve_pool};
-
+    fn test_mine_object_triggers_detonation_and_preserves_terrain() {
         let mut state = GameEngine::create_game(test_config(99)).expect("game");
         let mine_pos = Position { x: 2, y: 2 };
         let mine_idx = map_index(mine_pos, state.map_size).unwrap();
-        state.terrain[mine_idx] = Terrain::Mine;
+        state.terrain[mine_idx] = Terrain::Ice;
+        state.objects[mine_idx] = Some(MapObject::Mine);
 
-        let enter_trigger = TriggerPoint::TerrainEntered {
-            actor_id: state.players[0].id,
-            from: Position { x: 2, y: 1 },
-            to: mine_pos,
-            terrain: Terrain::Mine,
-            direction: Direction::Down,
-        };
-        let pool = resolve_pool(&enter_trigger, &state).expect("pool");
-        assert_eq!(pool.name, "terrain_enter_mine");
-
-        let mut rng = 42;
-        let (_, _, _, candidates) = pool.roll_with_trace(0, 0, &mut rng);
-        let det_cand = candidates
-            .iter()
-            .find(|c| c.event_id.0 == "evt_mine_detonation")
-            .expect("det");
-        assert!(det_cand.is_lethal);
-        assert!(det_cand.probability_permille >= 800);
+        resolve_landing_terrain(&mut state, 0, mine_pos).expect("landing");
+        assert_eq!(state.objects[mine_idx], None);
+        assert_eq!(state.terrain[mine_idx], Terrain::Ice);
+        assert_eq!(state.players[0].status, PlayerStatus::Eliminated);
     }
 
     #[test]
@@ -1737,7 +1752,8 @@ mod tests {
         })
         .expect("valid target");
         let target_idx = map_index(target, state.map_size).unwrap();
-        state.terrain[target_idx] = Terrain::Empty;
+        state.terrain[target_idx] = Terrain::Plain;
+        state.objects[target_idx] = None;
 
         // Perform move step
         complete_move_step(&mut state, 0, p0_pos, target, dir).expect("move step");
@@ -1809,7 +1825,8 @@ mod tests {
 
         let empty_pos = Position { x: 0, y: 2 };
         let empty_idx = map_index(empty_pos, state.map_size).expect("idx");
-        state.terrain[empty_idx] = Terrain::Empty;
+        state.terrain[empty_idx] = Terrain::Plain;
+        state.objects[empty_idx] = None;
 
         let ice_trigger = TriggerPoint::TerrainEntered {
             actor_id: p1,
@@ -1892,14 +1909,15 @@ mod tests {
         state.players[1].position = Some(target_pos);
 
         let wall_idx = map_index(wall_pos, state.map_size).unwrap();
-        state.terrain[wall_idx] = Terrain::Wall;
+        state.terrain[wall_idx] = Terrain::Plain;
+        state.objects[wall_idx] = Some(MapObject::Wall);
 
         state.players[0].consecutive_shots = 0;
         state.rng.combat = 1;
 
         apply_shot(&mut state, 0, Direction::Down, false, false).expect("shot");
 
-        assert_eq!(state.terrain[wall_idx], Terrain::Wall);
+        assert_eq!(state.objects[wall_idx], Some(MapObject::Wall));
         assert_eq!(state.players[1].status, PlayerStatus::Alive);
     }
 
@@ -1914,14 +1932,16 @@ mod tests {
         state.players[1].position = Some(target_pos);
 
         let wall_idx = map_index(wall_pos, state.map_size).unwrap();
-        state.terrain[wall_idx] = Terrain::Wall;
+        state.terrain[wall_idx] = Terrain::HighGround;
+        state.objects[wall_idx] = Some(MapObject::Wall);
 
         state.players[0].consecutive_shots = 0;
         state.rng.combat = 1;
 
         apply_shot(&mut state, 0, Direction::Down, true, false).expect("shot");
 
-        assert_eq!(state.terrain[wall_idx], Terrain::Empty);
+        assert_eq!(state.objects[wall_idx], None);
+        assert_eq!(state.terrain[wall_idx], Terrain::HighGround);
         assert_eq!(state.players[1].status, PlayerStatus::Eliminated);
     }
 
@@ -1933,14 +1953,15 @@ mod tests {
 
         state.players[0].position = Some(p0_pos);
         let mine_idx = map_index(mine_pos, state.map_size).unwrap();
-        state.terrain[mine_idx] = Terrain::Mine;
+        state.terrain[mine_idx] = Terrain::Plain;
+        state.objects[mine_idx] = Some(MapObject::Mine);
 
         state.players[0].consecutive_shots = 0;
         state.rng.combat = 1;
 
         apply_shot(&mut state, 0, Direction::Down, true, false).expect("shot");
 
-        assert_eq!(state.terrain[mine_idx], Terrain::Mine);
+        assert_eq!(state.objects[mine_idx], Some(MapObject::Mine));
     }
 
     #[test]
@@ -1954,15 +1975,17 @@ mod tests {
         state.players[1].position = Some(target_pos);
 
         let crate_idx = map_index(crate_pos, state.map_size).unwrap();
-        state.terrain[crate_idx] = Terrain::Crate;
+        state.terrain[crate_idx] = Terrain::Ice;
+        state.objects[crate_idx] = Some(MapObject::Crate);
 
         state.players[0].consecutive_shots = 0;
         state.rng.combat = 1;
 
         apply_shot(&mut state, 0, Direction::Down, false, false).expect("shot");
 
-        // Crate is destroyed (no longer Crate, could be Empty or reveal a surprise mine/medkit)
-        assert_ne!(state.terrain[crate_idx], Terrain::Crate);
+        // Crate is destroyed (no longer Crate, could be None or reveal a surprise mine/shield)
+        assert_ne!(state.objects[crate_idx], Some(MapObject::Crate));
+        assert_eq!(state.terrain[crate_idx], Terrain::Ice);
         assert_eq!(state.players[1].status, PlayerStatus::Alive);
     }
 
@@ -1975,7 +1998,8 @@ mod tests {
         state.players[1].position = Some(Position { x: 1, y: 3 });
 
         let clear_idx = map_index(Position { x: 1, y: 2 }, state.map_size).unwrap();
-        state.terrain[clear_idx] = Terrain::Empty;
+        state.terrain[clear_idx] = Terrain::Plain;
+        state.objects[clear_idx] = None;
 
         let cmd = GameEngine::choose_random_bot_command(&mut state, bot_id).expect("bot cmd");
         assert_eq!(
@@ -1997,21 +2021,21 @@ mod tests {
 
         // Block cardinal line of sight / moves with walls
         let down_idx = map_index(Position { x: 1, y: 2 }, state.map_size).unwrap();
-        state.terrain[down_idx] = Terrain::Wall;
+        state.objects[down_idx] = Some(MapObject::Wall);
         let up_idx = map_index(Position { x: 1, y: 0 }, state.map_size).unwrap();
-        state.terrain[up_idx] = Terrain::Wall;
+        state.objects[up_idx] = Some(MapObject::Wall);
 
         // Place a mine at Right (2, 1)
         let right_idx = map_index(Position { x: 2, y: 1 }, state.map_size).unwrap();
-        state.terrain[right_idx] = Terrain::Mine;
+        state.objects[right_idx] = Some(MapObject::Mine);
 
         // Clear safe path via Left (0, 1) -> (0, 2) -> (0, 3) -> (2, 3)
         let left_idx = map_index(Position { x: 0, y: 1 }, state.map_size).unwrap();
-        state.terrain[left_idx] = Terrain::Empty;
+        state.objects[left_idx] = None;
         let p02_idx = map_index(Position { x: 0, y: 2 }, state.map_size).unwrap();
-        state.terrain[p02_idx] = Terrain::Empty;
+        state.objects[p02_idx] = None;
         let p03_idx = map_index(Position { x: 0, y: 3 }, state.map_size).unwrap();
-        state.terrain[p03_idx] = Terrain::Empty;
+        state.objects[p03_idx] = None;
 
         let cmd = GameEngine::choose_random_bot_command(&mut state, bot_id).expect("bot cmd");
 

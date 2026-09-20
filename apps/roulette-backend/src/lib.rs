@@ -346,13 +346,18 @@ mod tests {
         let rules_res = dispatcher
             .dispatch("referee_query_rules", &json!({}))
             .expect("referee query rules");
-        assert!(rules_res.is_array());
-        let rules_list = rules_res.as_array().unwrap();
-        assert!(!rules_list.is_empty());
+        assert!(rules_res.is_object());
+        let terrains = rules_res["terrains"].as_array().expect("terrains array");
         assert!(
-            rules_list
+            terrains
                 .iter()
-                .any(|t| t.get("name").and_then(Value::as_str) == Some("墙体"))
+                .any(|t| t.get("name").and_then(Value::as_str) == Some("平地"))
+        );
+        let objects = rules_res["objects"].as_array().expect("objects array");
+        assert!(
+            objects
+                .iter()
+                .any(|o| o.get("name").and_then(Value::as_str) == Some("墙体"))
         );
 
         // 2. referee_create_room (3 bots)

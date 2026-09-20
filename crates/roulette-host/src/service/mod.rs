@@ -10,9 +10,9 @@ use std::sync::{
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use roulette_domain::{
-    BotSetupAction, LobbyView, PlayerCommand, RefereeDissolveResult, RefereeRoomSummary,
-    RefereeRoomView, RefereeStepResult, RoomMemberId, RoomView, ServerMode, TabId, Terrain,
-    TerrainProperties,
+    BotSetupAction, LobbyView, MapObject, MapObjectProperties, PlayerCommand,
+    RefereeDissolveResult, RefereeRoomSummary, RefereeRoomView, RefereeStepResult, RoomMemberId,
+    RoomView, ServerMode, TabId, Terrain, TerrainProperties,
 };
 use serde::{Deserialize, Serialize};
 
@@ -333,6 +333,12 @@ impl GameService {
     #[must_use]
     pub fn get_terrain_rules(&self) -> Vec<TerrainProperties> {
         Terrain::all_properties()
+    }
+
+    /// Returns static canonical map object rules and property definitions.
+    #[must_use]
+    pub fn get_object_rules(&self) -> Vec<MapObjectProperties> {
+        MapObject::all_properties()
     }
 
     fn check_idempotency<T: serde::de::DeserializeOwned>(

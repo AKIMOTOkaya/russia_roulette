@@ -8,6 +8,7 @@
 use roulette_domain::{CellView, GameRecord, PlayerId, PlayerState, Position, Terrain};
 
 use crate::assets::effects::EffectsRenderer;
+use crate::assets::object::ObjectAssetRenderer;
 use crate::assets::player::PlayerAssetRenderer;
 use crate::assets::terrain::TerrainAssetRenderer;
 use crate::theme::{BoardMetrics, LayoutMetrics, Theme};
@@ -55,11 +56,26 @@ impl BoardRenderer {
             for x in 0..cols {
                 let cell_pos = Position { x, y };
                 let cell = cells.iter().find(|c| c.position == cell_pos);
-                let terrain = cell.map_or(Terrain::Empty, |c| c.terrain);
+                let terrain = cell.map_or(Terrain::Plain, |c| c.terrain);
                 let px = origin_x + u32::from(x) * cell_size;
                 let py = origin_y + u32::from(y) * cell_size;
 
                 svg.push_str(&TerrainAssetRenderer::render(px, py, cell_size, terrain));
+            }
+        }
+        svg.push_str("    </g>\n");
+
+        // Map Objects Layer (Walls, Crates, Mines, Shields)
+        svg.push_str("    <g id=\"object-layer\">\n");
+        for y in 0..rows {
+            for x in 0..cols {
+                let cell_pos = Position { x, y };
+                let cell = cells.iter().find(|c| c.position == cell_pos);
+                if let Some(Some(object)) = cell.map(|c| c.object) {
+                    let px = origin_x + u32::from(x) * cell_size;
+                    let py = origin_y + u32::from(y) * cell_size;
+                    svg.push_str(&ObjectAssetRenderer::render(px, py, cell_size, object));
+                }
             }
         }
         svg.push_str("    </g>\n");
@@ -156,11 +172,26 @@ impl BoardRenderer {
             for x in 0..cols {
                 let cell_pos = Position { x, y };
                 let cell = cells.iter().find(|c| c.position == cell_pos);
-                let terrain = cell.map_or(Terrain::Empty, |c| c.terrain);
+                let terrain = cell.map_or(Terrain::Plain, |c| c.terrain);
                 let px = metrics.cell_x(x);
                 let py = metrics.cell_y(y);
 
                 svg.push_str(&TerrainAssetRenderer::render(px, py, cell_size, terrain));
+            }
+        }
+        svg.push_str("  </g>\n\n");
+
+        // Layer 2: Map Objects Layer (Cover, Traps, Pickups)
+        svg.push_str("  <!-- MAP OBJECTS LAYER -->\n  <g id=\"object-layer\" clip-path=\"url(#board-clip)\">\n");
+        for y in 0..rows {
+            for x in 0..cols {
+                let cell_pos = Position { x, y };
+                let cell = cells.iter().find(|c| c.position == cell_pos);
+                if let Some(Some(object)) = cell.map(|c| c.object) {
+                    let px = metrics.cell_x(x);
+                    let py = metrics.cell_y(y);
+                    svg.push_str(&ObjectAssetRenderer::render(px, py, cell_size, object));
+                }
             }
         }
         svg.push_str("  </g>\n\n");
