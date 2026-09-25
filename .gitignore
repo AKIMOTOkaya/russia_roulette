@@ -18,9 +18,9 @@ coverage/
 # Local configuration and tooling
 .env
 .env.*
-!.env.example
-!deploy/srv/apps/*/.env
-!deploy/srv/apps/*/services/*/.env
+**/.env
+**/.env.*
+!**/.env.example
 .DS_Store
 .idea/
 .vscode/

@@ -19,7 +19,7 @@
 ## 设计与实施细节
 
 ### 1. 静态管理员 Token 生成与持久化
-- 生成 32 位静态高熵十六进制 Token：`8aa383080e0c926c6afecb43c567f75a`；
+- 生成 32 位静态高熵十六进制 Token（写入生产环境私密配置，仓库以 `.env.example` 占位）；
 - 写入 `deploy/srv/apps/roulette/services/roulette-backend/.env` 中的 `ROULETTE_ADMIN_TOKEN`，容器重启时不发生漂移。
 
 ### 2. 容器配置套件落盘

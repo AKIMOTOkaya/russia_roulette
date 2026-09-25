@@ -19,12 +19,13 @@
 
 ## 运行环境变量
 
-配置文件位于 `./services/roulette-backend/.env`：
+配置文件位于 `./services/roulette-backend/.env`（仓库中由 `.env.example` 提供模板，真实 `.env` 纳入 `.gitignore` 保护，严禁提交到代码仓库）：
+- 可通过模板创建配置：`cp services/roulette-backend/.env.example services/roulette-backend/.env`
 - `ROULETTE_ENV=production`：生产运行环境；
 - `ROULETTE_SERVER_MODE=public`：公网中央服务器模式（自动放行反向代理流量并压制本地回环检查）；
 - `ROULETTE_HTTP_HOST=0.0.0.0`
 - `ROULETTE_HTTP_PORT=8080`
-- `ROULETTE_ADMIN_TOKEN`：静态管理员与裁判 Token（避免重启变化，持久化保存在文件中）；
+- `ROULETTE_ADMIN_TOKEN`：静态管理员与裁判 Token（避免重启变化，持久化保存在本地私密配置中）；
 - `ROULETTE_PUBLIC_BASE_URL=https://rrt.akiai.asia`：公网外部访问地址；
 - `ROULETTE_RUNTIME_DIR=/app/runtime`：运行时目录。
 

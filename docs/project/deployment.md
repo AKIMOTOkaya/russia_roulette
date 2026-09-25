@@ -62,5 +62,5 @@ rrt.akiai.asia {
 
 - **二进制构建**：在仓库根目录执行 `./scripts/build-srv.sh`，构建 Linux x86_64 生产版本，并自动同步安装到 `deploy/srv/apps/roulette/services/roulette-backend/runtime/` 及本机影子目录 `/Users/akimotokaya/Documents/srv/apps/roulette/`。
 - **推送到服务器**：在影子目录根目录执行 `./ops/scripts/push.sh roulette --restart`。
-- **凭据管理**：静态管理员 Token（`ROULETTE_ADMIN_TOKEN`）持久化保存在 `services/roulette-backend/.env` 中，避免容器重启导致 Token 漂移。
+- **凭据管理**：静态管理员 Token（`ROULETTE_ADMIN_TOKEN`）持久化保存在本地/生产环境的 `services/roulette-backend/.env` 中，避免容器重启导致 Token 漂移。代码仓库仅提交脱敏的 `.env.example` 模板，实际 `.env` 纳入 `.gitignore` 严格忽略，避免密钥入库。
 

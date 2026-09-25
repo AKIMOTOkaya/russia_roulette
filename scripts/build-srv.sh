@@ -92,11 +92,19 @@ cp "${TARGET_RUNTIME_LOCAL}/build-info.md" "${TARGET_RUNTIME_SRV}/build-info.md"
 
 echo ">>> [3/3] 同步配置文件到服务器影子目录..."
 cp "${DEPLOY_LOCAL_DIR}/docker-compose.yml" "${DEPLOY_SRV_DIR}/docker-compose.yml"
-cp "${DEPLOY_LOCAL_DIR}/.env" "${DEPLOY_SRV_DIR}/.env"
 cp "${DEPLOY_LOCAL_DIR}/README.md" "${DEPLOY_SRV_DIR}/README.md"
+cp "${DEPLOY_LOCAL_DIR}/.env.example" "${DEPLOY_SRV_DIR}/.env.example"
+if [[ -f "${DEPLOY_LOCAL_DIR}/.env" ]]; then
+  cp "${DEPLOY_LOCAL_DIR}/.env" "${DEPLOY_SRV_DIR}/.env"
+fi
+
+mkdir -p "${DEPLOY_SRV_DIR}/services/roulette-backend"
 cp "${DEPLOY_LOCAL_DIR}/services/roulette-backend/Dockerfile" "${DEPLOY_SRV_DIR}/services/roulette-backend/Dockerfile"
 cp "${DEPLOY_LOCAL_DIR}/services/roulette-backend/.dockerignore" "${DEPLOY_SRV_DIR}/services/roulette-backend/.dockerignore"
-cp "${DEPLOY_LOCAL_DIR}/services/roulette-backend/.env" "${DEPLOY_SRV_DIR}/services/roulette-backend/.env"
+cp "${DEPLOY_LOCAL_DIR}/services/roulette-backend/.env.example" "${DEPLOY_SRV_DIR}/services/roulette-backend/.env.example"
+if [[ -f "${DEPLOY_LOCAL_DIR}/services/roulette-backend/.env" ]]; then
+  cp "${DEPLOY_LOCAL_DIR}/services/roulette-backend/.env" "${DEPLOY_SRV_DIR}/services/roulette-backend/.env"
+fi
 
 echo "=== 构建完成！产物已部署至 ==="
 echo "1. ${TARGET_RUNTIME_LOCAL}/${BINARY_NAME}"

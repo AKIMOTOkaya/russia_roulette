@@ -295,6 +295,7 @@ impl RussianRouletteMcpServer {
     }
 }
 
+#[allow(clippy::unused_async_trait_impl)]
 #[tool_handler]
 impl ServerHandler for RussianRouletteMcpServer {
     fn get_info(&self) -> ServerConfig {
